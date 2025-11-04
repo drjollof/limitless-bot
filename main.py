@@ -10,6 +10,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+os.makedirs('logs', exist_ok=True)
 # Setup basic logging to see the bot's activity
 logging.basicConfig(level=logging.DEBUG if os.getenv('DEBUG') else logging.INFO, 
                     format='%(asctime)s  - %(levelname)s - %(filename)s - %(funcName)s - %(message)s',
@@ -18,7 +19,10 @@ logging.basicConfig(level=logging.DEBUG if os.getenv('DEBUG') else logging.INFO,
         logging.StreamHandler()
     ])
 
-
+logging.getLogger("web3").setLevel(logging.WARNING)
+logging.getLogger("websockets").setLevel(logging.WARNING)
+logging.getLogger("socketio").setLevel(logging.WARNING)
+logging.getLogger("engineio").setLevel(logging.WARNING)
 
 # Market updater background task to periodically fetch new markets and update subscriptions
 async def market_updater_task(client: CustomWebSocket, initial_markets: list):
@@ -63,9 +67,9 @@ async def market_updater_task(client: CustomWebSocket, initial_markets: list):
                     seconds_to_expiration = (soonest_exp_utc - now_utc).total_seconds()
                     
                     # Sleep until 15 seconds after the market expires to ensure the new one is available.
-                    # max(10, ...) to prevent negative sleep times if we're already past expiration.
+                    # max(15, ...) to prevent negative sleep times if we're already past expiration.
 
-                    sleep_duration = max(10, seconds_to_expiration + 15)
+                    sleep_duration = max(15, seconds_to_expiration + 15)
             
 
             logging.info(f"Market updater task is sleeping for {int(sleep_duration)} seconds (until next market activation).")
@@ -143,9 +147,13 @@ async def main():
     for market in active_markets:
         if 'address' in market and market['address'] != '0':
             valid_active_markets.append(market)
+ 
+    # test for single market
+    single_market = valid_active_markets[:1]
 
     # Extract market addresses for subscription
-    MARKET_ADDRESSES = [m['address'] for m in valid_active_markets if m.get('address') and m['address'] != '0']
+    #MARKET_ADDRESSES = [m['address'] for m in valid_active_markets if m.get('address') and m['address'] != '0']
+    MARKET_ADDRESSES = [m['address'] for m in single_market if m.get('address') and m['address'] != '0']
 
     if not MARKET_ADDRESSES:
         logging.error("No valid market addresses found in the loaded market data. Exiting.")
@@ -156,7 +164,7 @@ async def main():
         websocket_url=websocket_url,
         private_key=private_key, 
         strategy_func=check_and_execute_buy_strategy,
-        initial_markets=valid_active_markets,
+        initial_markets = single_market, #active_markets,  #valid_active_markets,
         api_url=api_url
     )
 

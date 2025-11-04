@@ -84,6 +84,7 @@ def filter_hourly_markets(markets):
                 'slug': market.get('slug', 'unknown'),
                 'address': market.get('address', '0'),
                 'tokens': tokens,
+                'tradeType' : market.get('tradeType', 'unknown'),
                 'expiration': market.get('expirationTimestamp', '0')
             })
             if 'address' not in market:
@@ -92,6 +93,7 @@ def filter_hourly_markets(markets):
                 'slug': market.get('slug', 'unknown'),
                 'address': market.get('address', '0'),
                 'tokens': tokens,
+                'tradeType' : market.get('tradeType', 'unknown'),
                 'expiration': market.get('expirationTimestamp', '0') }
                 )
 

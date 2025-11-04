@@ -6,6 +6,9 @@ import os
 import aiohttp
 from typing import Optional, List
 import socketio
+from web3 import AsyncWeb3
+from web3.providers import AsyncHTTPProvider
+from web3.middleware import ExtraDataToPOAMiddleware
 from scripts.auth import authenticate_async, get_signing_message_async
 from scripts.trade_utils import prepare_signed_order
 
@@ -174,6 +177,7 @@ class CustomWebSocket(LimitlessWebSocket):
         self.user_data = None
         self.api_url = api_url
         self.market_data_cache = {}
+        self.traded_markets = set()
         self.subscribed_markets = [m['address'] for m in initial_markets if m.get('address') and m['address'] != '0']
 
 
@@ -336,6 +340,10 @@ class CustomWebSocket(LimitlessWebSocket):
         """
 
         logger.info("Updating market subscriptions...")
+
+        self.traded_markets.clear()
+
+        logger.info('Cleared traded markets memory for the new hour')
         
         # Disconnect if currently connected
         if self.connected:
@@ -408,6 +416,118 @@ class CustomWebSocket(LimitlessWebSocket):
 
         except Exception as e:
             logger.error(f"An error occurred during trade execution: {e}", exc_info=True)
+
+
+    async def execute_amm_trade(self, market_address: str, share_type: str, size: float):
+        '''
+        Executes AMM trade via the smart contract directly
+        
+        '''
+        if not self.private_key:
+            logger.warning("Cannot execute AMM trade: No private key provided.")
+            return
+        
+        logger.info("--- INITIATING AMM TRADE on market {market_address} ---")
+
+        try:
+            rpc_url = os.getenv('BASE_RPC_URL')
+            usdc = os.getenv('USDC_ADDRESS')
+
+            if not rpc_url:
+                logger.error("BASE_RPC_URL environment variable not set.")
+                return
+            
+            try:
+                w3 = AsyncWeb3(AsyncHTTPProvider(rpc_url))
+            #w3.middleware_onion.inject(ExtraDataToPOAMiddleware, layer=0)
+
+                account = w3.eth.account.from_key(self.private_key)
+
+                with open('config/amm_abi.json', 'r') as f:
+                    amm_abi = json.load(f)
+
+                with open('config/usdc_abi.json', 'r') as f:
+                    usdc_abi = json.load(f)
+
+                usdc_address = w3.to_checksum_address(usdc)
+                current_market_address = w3.to_checksum_address(market_address)
+                usdc_contract = w3.eth.contract(address = usdc_address, abi = usdc_abi)
+                amm_contract = w3.eth.contract(address = current_market_address, abi = amm_abi)
+
+                # buy parameters
+                outcome_index = 0 if share_type.lower() == 'yes' else 1
+                outcome_name = 'YES' if outcome_index == 0 else 'NO'
+                scaling_factor = 10 ** 6  # USDC has 6 decimals
+                investment_amount = int(size * scaling_factor)
+                min_outcome_tokens_to_buy = 0 * scaling_factor
+                
+
+                # set gas details
+                priority_fee = w3.to_wei(1, 'wei') 
+                latest_block = await w3.eth.get_block('latest')
+                base_fee = latest_block['baseFeePerGas']
+                max_fee = base_fee * 2
+
+            except Exception as e:
+                logger.error(f'An error occured during web3 and parameters declaration: {e}', exc_info = True)
+
+            try:
+                # approve USDC token
+                logger.info('Approving USDC token.....')
+                usdc_txn = await usdc_contract.functions.approve(market_address, investment_amount).build_transaction({
+                    'from' : account.address,
+                    'nonce' : await w3.eth.get_transaction_count(account.address),
+                    'maxFeePerGas' : max_fee,
+                    'maxPriorityFeePerGas' : priority_fee
+                })
+                
+                signed_usdc_txn = w3.eth.account.sign_transaction(usdc_txn, self.private_key)
+                usdc_txn_hash = await w3.eth.send_raw_transaction(signed_usdc_txn.raw_transaction)
+                logger.info(f"Approve txn sent: {usdc_txn_hash.to_0x_hex()}. Waiting for confirmation...")
+
+                usdc_txn_receipt = await w3.eth.wait_for_transaction_receipt(usdc_txn_hash)
+                logger.info(f"USDT txn confirmed in block: {usdc_txn_receipt.blockNumber}")
+                logger.info(f'USDC approved... Transaction hash: https://basescan.org/tx/{usdc_txn_hash.to_0x_hex()}')
+
+
+            except Exception as e:
+                logger.error(f'An error occured during USDC Approval: {e}', exc_info = True)
+
+            try:
+                # buy token share
+                logger.info(f"Preparing AMM 'buy' transaction: {size} USDC for {outcome_name} Shares")
+                
+        
+                buy_txn = await amm_contract.functions.buy(investment_amount,
+                                                            outcome_index,
+                                                            min_outcome_tokens_to_buy).build_transaction({
+                    'from' : account.address,
+                    'nonce' : await w3.eth.get_transaction_count(account.address),
+                    'maxFeePerGas': max_fee,
+                    'maxPriorityFeePerGas' : priority_fee
+                })
+                
+                signed_buy_txn = w3.eth.account.sign_transaction(buy_txn, self.private_key)
+                buy_txn_hash = await w3.eth.send_raw_transaction(signed_buy_txn.raw_transaction)
+
+                logger.info(f"Buy txn sent: {buy_txn_hash.hex()}. Waiting for confirmation...")
+        
+                buy_txn_receipt = await w3.eth.wait_for_transaction_receipt(buy_txn_hash)
+
+                logger.info(f"Buy txn confirmed in block: {buy_txn_receipt.blockNumber}")
+
+                logger.info(f'See transaction: https://basescan.org/tx/{buy_txn_hash.to_0x_hex()} ')
+
+                logger.info(f"--- Trade successful for market: {market_address} ---")
+
+            except Exception as e:
+                logger.error(f'An error occured during token buy: {e}', exc_info = True)
+
+
+        except Exception as e:
+            logger.error(f'An error occured during AMM trade execution: {e}', exc_info = True)
+
+
 
     async def wait(self):
         """Keep connection alive and listen for events."""
