@@ -8,7 +8,6 @@ from typing import Optional, List
 import socketio
 from web3 import AsyncWeb3
 from web3.providers import AsyncHTTPProvider
-from web3.middleware import ExtraDataToPOAMiddleware
 from scripts.auth import authenticate_async, get_signing_message_async
 from scripts.trade_utils import prepare_signed_order
 
@@ -224,7 +223,7 @@ class CustomWebSocket(LimitlessWebSocket):
                 market_address = None
                 prices = None
 
-                '''API sends price data in two possible formats; handle both.'''
+                '''API sends price data in two possible formats'''
 
 
                 # Format 1: marketAddress is at the top level
@@ -239,7 +238,6 @@ class CustomWebSocket(LimitlessWebSocket):
                 elif isinstance(data.get('updatedPrices'), list) and len(data['updatedPrices']) > 0:
 
                     # Extract the first price object from the list
-
                     price_info = data['updatedPrices'][0]
                     if isinstance(price_info, dict) and 'marketAddress' in price_info:
                         market_address = price_info['marketAddress']
@@ -252,7 +250,6 @@ class CustomWebSocket(LimitlessWebSocket):
 
 
                 # record valid address and prices.
-
                 yes_price = float(prices['yesPrice']) / 100
                 no_price = float(prices['noPrice']) / 100
 
@@ -261,7 +258,6 @@ class CustomWebSocket(LimitlessWebSocket):
 
                 
                 # Execute strategy if defined
-
                 if self.strategy:
                     market_data = {'market_address': market_address, 
                                    'yes_price': yes_price, 
@@ -293,23 +289,36 @@ class CustomWebSocket(LimitlessWebSocket):
 
 
     async def connect(self):
-        try:
-            if self.private_key:
-                await self.authenticate()
-            
-            logger.info(f"Connecting to WebSocket at {self.websocket_url}...")
-            connect_options = {'transports': ['websocket']}
-            if self.session_cookie:
-                connect_options['headers'] = {'Cookie': f'limitless_session={self.session_cookie}'}
-            
-            await self.sio.connect(self.websocket_url, namespaces=['/markets'], **connect_options)
-           
-    
+        MAX_CONNECT_ATTEMPTS = 3
+        RECONNECT_DELAY = 5  
 
-        except socketio.exceptions.ConnectionError as e:
-            logger.error(f"WebSocket connection failed: {e}")
-            raise
+        for attempt in range(MAX_CONNECT_ATTEMPTS):
 
+            try:
+                if self.private_key:
+                    await self.authenticate()
+            
+                logger.info(f"Connecting to WebSocket at {self.websocket_url}...")
+                connect_options = {'transports': ['websocket']}
+
+                if self.session_cookie:
+                    connect_options['headers'] = {'Cookie': f'limitless_session={self.session_cookie}'}
+            
+                await self.sio.connect(self.websocket_url, namespaces=['/markets'], **connect_options)
+                
+                logger.info("WebSocket connection established successfully.")
+                return # Exit the function on success
+         
+            except socketio.exceptions.ConnectionError as e:
+        
+                logger.error(f"WebSocket connection attempt {attempt + 1} failed: {e}")
+                if attempt < MAX_CONNECT_ATTEMPTS - 1:
+                    logger.info(f"Retrying in {RECONNECT_DELAY} seconds...")
+                    await asyncio.sleep(RECONNECT_DELAY)
+                else:
+                    logger.error("All WebSocket connection attempts failed.")
+                    # Re-raise the exception to let the calling function know it failed.
+                    raise
 
 
     async def disconnect(self):
@@ -322,8 +331,6 @@ class CustomWebSocket(LimitlessWebSocket):
     async def subscribe_markets(self, market_addresses: List[str]):
         if not self.connected: 
             return
-        
-        
 
         logger.info(f"Subscribing to {len(market_addresses)} market(s).")
         payload = {'marketAddresses': market_addresses}
@@ -332,19 +339,37 @@ class CustomWebSocket(LimitlessWebSocket):
 
         
     # update market subscriptions after markets expires in an hour... used by the market updater task in main.py
-
-    async def update_market_subscriptions(self, new_market_addresses: list[str]):
+    async def update_market_subscriptions(self, new_market: list):
         """
         Disconnects, updates the list of tracked markets, and reconnects.
         
         """
 
-        logger.info("Updating market subscriptions...")
+        logger.info("Updating market subscriptions and cache for the new hour...")
 
-        self.traded_markets.clear()
-
-        logger.info('Cleared traded markets memory for the new hour')
         
+        # Clear old cache
+        self.market_data_cache.clear()
+
+
+        # Fill the empty cache with new market data
+        for market in new_market:
+            if 'address' in market and market['address'] != '0':
+                self.market_data_cache[market['address']] = market
+
+        logger.info(f'Market data cache updated with {len(self.market_data_cache)} new markets.')
+
+
+        # Get new addresses from the new cached market data
+        new_market_addresses = list(self.market_data_cache.keys())
+
+
+
+        # Clear traded markets memory
+        self.traded_markets.clear()
+        logger.info('Cleared traded markets memory for the new hour')
+
+
         # Disconnect if currently connected
         if self.connected:
             await self.sio.disconnect()
@@ -357,19 +382,19 @@ class CustomWebSocket(LimitlessWebSocket):
         self.subscribed_markets = new_market_addresses
         logger.info(f"Client will now track {len(self.subscribed_markets)} new markets.")
 
-        # Reconnect. The 'connect' event handler will automatically handle
-        # subscribing to the new self.subscribed_markets list
+        # Reconnect. The 'connect' event handler will automatically handle subscribing to the new self.subscribed_markets list
         await self.connect()
 
 
-    # Place order method to execute trades via the API
 
+
+    # Place order method to execute trades via the API
     async def place_order(self, market_address: str, share_type: str, size: float, price: float):
         if not all([self.private_key, self.user_data, self.session_cookie]):
             logger.warning("Cannot place order: Client is not authenticated.")
             return
         
-        # Ensure required attributes are set and not None
+        # Ensure required attributes are set and not None 
         assert self.user_data is not None, "User data should not be None if authenticated"
         assert self.private_key is not None, "Private key should not be None if authenticated"
 
@@ -382,7 +407,7 @@ class CustomWebSocket(LimitlessWebSocket):
         market_data = self.market_data_cache[market_address]
         trade_params = {"share_type": share_type, "size": size, "price": price}
         
-        #initiate trade process
+        # Initiate trade process
         logger.info("--- INITIATING TRADE ---")
 
         try:
@@ -399,10 +424,6 @@ class CustomWebSocket(LimitlessWebSocket):
             }
 
 
-            # Print the final payload in a readable JSON format to ensure correctness before sending---- should be removed in production
-           # logger.info(f"Final order payload being sent: {json.dumps(final_order_payload, indent=2)}")
-
-
             async with aiohttp.ClientSession() as session:
                 async with session.post(order_endpoint, headers=headers, json=final_order_payload) as response:
 
@@ -416,6 +437,7 @@ class CustomWebSocket(LimitlessWebSocket):
 
         except Exception as e:
             logger.error(f"An error occurred during trade execution: {e}", exc_info=True)
+
 
 
     async def execute_amm_trade(self, market_address: str, share_type: str, size: float):
@@ -439,7 +461,6 @@ class CustomWebSocket(LimitlessWebSocket):
             
             try:
                 w3 = AsyncWeb3(AsyncHTTPProvider(rpc_url))
-            #w3.middleware_onion.inject(ExtraDataToPOAMiddleware, layer=0)
 
                 account = w3.eth.account.from_key(self.private_key)
 
@@ -518,7 +539,7 @@ class CustomWebSocket(LimitlessWebSocket):
 
                 logger.info(f'See transaction: https://basescan.org/tx/{buy_txn_hash.to_0x_hex()} ')
 
-                logger.info(f"--- Trade successful for market: {market_address} ---")
+                logger.info(f"--- TRADE SUCCESSFUL FOR MARKET : {market_address} ---")
 
             except Exception as e:
                 logger.error(f'An error occured during token buy: {e}', exc_info = True)

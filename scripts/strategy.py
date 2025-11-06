@@ -32,25 +32,24 @@ async def check_and_execute_buy_strategy(market_data: dict, client: "CustomWebSo
         return
     
 
-    # STRATEGY LOGIC GOES HERE
+    # strategy logic goes here
     
-    BUY_NO_THRESHOLD = 0.60  # e.g., Buy NO if it's cheap
-    BUY_YES_THRESHOLD = 0.60 # e.g., Buy YES if it's cheap
-
+    BUY_NO_THRESHOLD = 1.60  
+    BUY_YES_THRESHOLD = 1.60 
 
 
 
     if market_data['no_price'] >= BUY_NO_THRESHOLD:
-        logger.info(f"STRATEGY TRIGGERED: 'NO' price is at or below threshold. Buying NO.")
+        logger.info(f"STRATEGY TRIGGERED: 'NO' price is at or above threshold. Buying NO.")
 
-        #add market address to memory to avoid duplicate trade
+        # add market address to memory to avoid duplicate trade
         client.traded_markets.add(trade_market_address)
 
         if market_type == 'clob':
             await client.place_order(
                 market_address=trade_market_address, 
                 share_type="NO",
-                size=1.0,         #  for testing
+                size=1.0,         # $1 for testing
                 price=market_data['no_price']
         )
         
@@ -63,16 +62,16 @@ async def check_and_execute_buy_strategy(market_data: dict, client: "CustomWebSo
 
 
     if market_data['yes_price'] >= BUY_YES_THRESHOLD:
-        logger.info(f"STRATEGY TRIGGERED: 'YES' price is at or below threshold. Buying YES.")
+        logger.info(f"STRATEGY TRIGGERED: 'YES' price is at or above threshold. Buying YES.")
         
-        #add market address to memory to avoid duplicate trade
+        # add market address to memory to avoid duplicate trade
         client.traded_markets.add(trade_market_address)
 
         if market_type == 'clob':
             await client.place_order(
             market_address= trade_market_address,
             share_type="YES",
-            size=1.0,                # for testing
+            size=1.0,                # $1 for testing
             price=market_data['yes_price']
         )
         
@@ -80,6 +79,6 @@ async def check_and_execute_buy_strategy(market_data: dict, client: "CustomWebSo
             await client.execute_amm_trade(
                 market_address= trade_market_address,
                 share_type= 'YES',
-                size=1
+                size=1 # $1 for testing
             )
 

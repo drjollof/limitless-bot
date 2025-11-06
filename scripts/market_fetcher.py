@@ -2,7 +2,7 @@ import os
 import json
 import logging
 import asyncio
-from datetime import datetime
+from datetime import datetime , timezone
 import aiohttp
 import aiofiles
 from dotenv import load_dotenv
@@ -155,9 +155,28 @@ async def get_active_markets():
     try:
         async with aiofiles.open('config/markets.json', 'r') as f:
             content = await f.read()
-            markets = json.loads(content)
-        logger.info(f"Loaded {len(markets)} hourly markets from config/markets.json")
-        return markets
+            cached_markets = json.loads(content)
+
+        if not cached_markets:
+            logger.warning('markets.json is empty... Fetching from API')
+            return await update_markets()
+        
+        expiration_ts_ms = cached_markets[0].get('expiration')
+        if not expiration_ts_ms:
+            logger.warning('Cached markets are missing expiration timestamps... Refetching from API..')
+            return await update_markets()
+        
+        expiration_time_utc = datetime.fromtimestamp(expiration_ts_ms / 1000, tz=timezone.utc) 
+        now_utc = datetime.now(timezone.utc)
+
+
+        if expiration_time_utc < now_utc:
+            logger.info(f'Cached markets have expired at: {expiration_time_utc}... Fetching fresh markets from API..')
+            return await update_markets()
+        
+
+        logger.info(f"Loaded {len(cached_markets)} valid hourly markets from config/markets.json")
+        return cached_markets
     
     except (FileNotFoundError, json.JSONDecodeError) as e:
         logger.warning(f"Could not load from markets.json ({e}). Fetching from API instead.")

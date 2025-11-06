@@ -12,24 +12,23 @@ load_dotenv()
 
 os.makedirs('logs', exist_ok=True)
 # Setup basic logging to see the bot's activity
-logging.basicConfig(level=logging.DEBUG if os.getenv('DEBUG') else logging.INFO, 
+logging.basicConfig(level=logging.DEBUG if os.getenv('DEBUG', 'false').lower() == 'true' else logging.INFO, 
                     format='%(asctime)s  - %(levelname)s - %(filename)s - %(funcName)s - %(message)s',
                     handlers=[
         logging.FileHandler('logs/bot.log'),
         logging.StreamHandler()
     ])
 
+#clean up noisy logging
 logging.getLogger("web3").setLevel(logging.WARNING)
 logging.getLogger("websockets").setLevel(logging.WARNING)
 logging.getLogger("socketio").setLevel(logging.WARNING)
 logging.getLogger("engineio").setLevel(logging.WARNING)
 
+
+
 # Market updater background task to periodically fetch new markets and update subscriptions
 async def market_updater_task(client: CustomWebSocket, initial_markets: list):
-    """
-    A smart background task that syncs its updates to the market expiration times.
-    
-    """
   
     # This is responsible for the first connection.
     try:
@@ -67,7 +66,7 @@ async def market_updater_task(client: CustomWebSocket, initial_markets: list):
                     seconds_to_expiration = (soonest_exp_utc - now_utc).total_seconds()
                     
                     # Sleep until 15 seconds after the market expires to ensure the new one is available.
-                    # max(15, ...) to prevent negative sleep times if we're already past expiration.
+                    # max(15) to prevent negative sleep times if we're already past expiration.
 
                     sleep_duration = max(15, seconds_to_expiration + 15)
             
@@ -76,30 +75,54 @@ async def market_updater_task(client: CustomWebSocket, initial_markets: list):
             await asyncio.sleep(sleep_duration)
             
 
-            # fetch the latest markets and update subscriptions
-            logging.info("Hourly market update: Fetching latest markets...")
-            
-            latest_markets = await update_markets()
+            logging.info("Woke up. Now attempting to fetch NEW hourly markets...")
 
+            # Get the expiration of the last traded markets
+            old_expiration_ts = min([m.get('expiration', 0) for m in markets_to_update]) if markets_to_update else 0
+
+
+            latest_markets = None
+            MAX_RETRIES = 10  
+            RETRY_DELAY = 15  
+
+            for attempt in range(MAX_RETRIES):
+                fetched_markets = await update_markets()
+                
+                if not fetched_markets:
+                    logging.warning(f"Attempt {attempt + 1}/{MAX_RETRIES}: API returned no active markets. Retrying in {RETRY_DELAY}s...")
+                    await asyncio.sleep(RETRY_DELAY)
+                    continue
+
+                new_expiration_ts = min([m.get('expiration', 0) for m in fetched_markets])
+                new_expiration_utc = datetime.fromtimestamp(new_expiration_ts / 1000, tz=timezone.utc)
+
+
+                # check if new new expiration is above old expiration
+                if new_expiration_ts > old_expiration_ts:
+                    logging.info(f"Successfully fetched new markets for the next hour (Expiration: {new_expiration_utc}).")
+                    latest_markets = fetched_markets
+
+                    break 
+
+                else:
+                    logging.warning(f"Attempt {attempt + 1}/{MAX_RETRIES}: Fetched stale markets (Expiration: {new_expiration_utc}). Retrying in {RETRY_DELAY}s...")
+                    await asyncio.sleep(RETRY_DELAY)
+
+
+            
             if not latest_markets:
                 logging.warning("Hourly update: No new markets found. No changes made.")
-                # Keep the old market list for the next sleep calculation
                 continue
 
-            # Update the list for the next iteration of the loop
+            # Update the state for the next iteration of the loop
             markets_to_update = latest_markets
 
-            new_addresses = [m['address'] for m in latest_markets if m.get('address') and m['address'] != '0']
-            if not new_addresses:
-                logging.warning("Hourly update: New markets list contained no valid addresses.")
-                continue
-
-            await client.update_market_subscriptions(new_addresses)
+            await client.update_market_subscriptions(latest_markets)
             logging.info("Hourly market update complete.")
 
         except Exception as e:
             logging.error(f"Error in market_updater_task: {e}", exc_info=True)
-            await asyncio.sleep(300) # Wait 5 minutes before retrying on error
+            await asyncio.sleep(300) 
 
             
 
@@ -107,10 +130,10 @@ async def market_updater_task(client: CustomWebSocket, initial_markets: list):
 
 
 
-# Main bot execution function
 
+# Main function to initialize and run the bot.
 async def main():
-    """Main function to initialize and run the bot."""
+    
     logging.info("Starting the trading bot...")
 
 
@@ -127,7 +150,6 @@ async def main():
 
 
     # Warn if private key and active market are missing (read-only mode)
-
     if not private_key:
         logging.warning("PRIVATE_KEY environment variable not found. Running in public/read-only mode.")
 
@@ -142,7 +164,7 @@ async def main():
         return
     
 
-    # Filter out any invalid markets (e.g., missing address)
+    # Filter out any invalid markets (missing address)
     valid_active_markets = []
     for market in active_markets:
         if 'address' in market and market['address'] != '0':
@@ -153,18 +175,18 @@ async def main():
 
     # Extract market addresses for subscription
     #MARKET_ADDRESSES = [m['address'] for m in valid_active_markets if m.get('address') and m['address'] != '0']
-    MARKET_ADDRESSES = [m['address'] for m in single_market if m.get('address') and m['address'] != '0']
+    #MARKET_ADDRESSES = [m['address'] for m in single_market if m.get('address') and m['address'] != '0']
 
-    if not MARKET_ADDRESSES:
-        logging.error("No valid market addresses found in the loaded market data. Exiting.")
-        return
+    # if not MARKET_ADDRESSES:
+    #     logging.error("No valid market addresses found in the loaded market data. Exiting.")
+    #     return
 
     # Initialize the WebSocket client with strategy and initial markets
     client = CustomWebSocket(
         websocket_url=websocket_url,
         private_key=private_key, 
         strategy_func=check_and_execute_buy_strategy,
-        initial_markets = single_market, #active_markets,  #valid_active_markets,
+        initial_markets = active_markets,  #valid_active_markets,
         api_url=api_url
     )
 
