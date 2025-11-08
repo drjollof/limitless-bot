@@ -176,8 +176,19 @@ class CustomWebSocket(LimitlessWebSocket):
         self.user_data = None
         self.api_url = api_url
         self.market_data_cache = {}
+        self.w3 = None
         self.traded_markets = set()
         self.subscribed_markets = [m['address'] for m in initial_markets if m.get('address') and m['address'] != '0']
+
+        rpc_url = os.getenv('BASE_RPC_URL')
+        
+
+        if rpc_url:
+            self.w3 = AsyncWeb3(AsyncHTTPProvider(rpc_url))
+            logger.info("Initialized Web3 provider for AMM trading")
+
+        else:
+            logger.warning("BASE_RPC_URL not found.. AMM trading will be disabled")
 
 
         if initial_markets:
@@ -243,7 +254,7 @@ class CustomWebSocket(LimitlessWebSocket):
                         market_address = price_info['marketAddress']
                         prices = price_info # The whole dictionary is the price info
 
-                # If after checking both formats, we don't have what we need, skip.
+                
                 if not market_address or not prices or 'noPrice' not in prices or 'yesPrice' not in prices:
                     logging.warning(f"Skipping price data with unknown format: {data}")
                     return
@@ -307,7 +318,7 @@ class CustomWebSocket(LimitlessWebSocket):
                 await self.sio.connect(self.websocket_url, namespaces=['/markets'], **connect_options)
                 
                 logger.info("WebSocket connection established successfully.")
-                return # Exit the function on success
+                return 
          
             except socketio.exceptions.ConnectionError as e:
         
@@ -317,7 +328,6 @@ class CustomWebSocket(LimitlessWebSocket):
                     await asyncio.sleep(RECONNECT_DELAY)
                 else:
                     logger.error("All WebSocket connection attempts failed.")
-                    # Re-raise the exception to let the calling function know it failed.
                     raise
 
 
@@ -360,29 +370,22 @@ class CustomWebSocket(LimitlessWebSocket):
         logger.info(f'Market data cache updated with {len(self.market_data_cache)} new markets.')
 
 
-        # Get new addresses from the new cached market data
         new_market_addresses = list(self.market_data_cache.keys())
 
-
-
-        # Clear traded markets memory
         self.traded_markets.clear()
         logger.info('Cleared traded markets memory for the new hour')
 
 
-        # Disconnect if currently connected
         if self.connected:
             await self.sio.disconnect()
 
-            # Give it a moment to process the disconnection
             await asyncio.sleep(1)
 
-        # Replace the old list of markets with the new, definitive list
 
         self.subscribed_markets = new_market_addresses
         logger.info(f"Client will now track {len(self.subscribed_markets)} new markets.")
 
-        # Reconnect. The 'connect' event handler will automatically handle subscribing to the new self.subscribed_markets list
+       
         await self.connect()
 
 
@@ -437,30 +440,151 @@ class CustomWebSocket(LimitlessWebSocket):
 
         except Exception as e:
             logger.error(f"An error occurred during trade execution: {e}", exc_info=True)
+    
+
+
+    async def execute_amm_sell(self, market_address: str, share_type: str, return_amount_usd: float):
+        """
+        Executes a SELL order on an AMM market to get a specific amount of USDC back.
+        """
+        try:
+            if not self.private_key:
+                logger.error("Cannot execute AMM sell: Private key is not initialized.")
+                return
+            
+            if not self.w3:
+                logger.error("Cannot execute AMM trade: Web provider is not initialized")
+                return
+                
+            w3 = self.w3
+            erc1155_address = os.getenv('CONDITIONAL_TOKEN_ADDRESS')
+
+            logger.info(f"--- INITIATING AMM SELL on market {market_address} ---")
+
+            try:
+                account = w3.eth.account.from_key(self.private_key)
+                
+                with open('config/amm_abi.json', 'r') as f:
+                    amm_abi = json.load(f)
+
+                with open('config/conditional_abi.json', 'r') as f:
+                        erc1155_abi = json.load(f)
+                
+                current_market_address = w3.to_checksum_address(market_address)
+                conditional_tokens_address = w3.to_checksum_address(erc1155_address)
+
+                amm_contract = w3.eth.contract(address=current_market_address, abi=amm_abi)
+                erc1155_contract = w3.eth.contract(address= conditional_tokens_address,abi = erc1155_abi )
+
+                # set sell transaction parameters
+                outcome_index = 0 if share_type.lower() == 'yes' else 0
+                outcome_name = 'YES' if outcome_index == 0 else 'NO'
+                scaling_factor = 10**6
+                return_amount_base_units = int(return_amount_usd * scaling_factor)
+                nonce = await w3.eth.get_transaction_count(account.address)
+                max_outcome_tokens_to_sell = 2**256 - 1 # "Infinite" amount
+
+                # set gas details
+                priority_fee = w3.to_wei(1, 'wei') 
+                latest_block = await w3.eth.get_block('latest')
+                base_fee = latest_block['baseFeePerGas']
+                max_fee = base_fee * 2
+
+            except Exception as e:
+                logger.error(f'An error occured during web3 and parameters declaration: {e}', exc_info = True)
+            
+            
+            #ERC1155 APPROVAL TRANSACTION
+
+            logger.info('Approving ERC1155 contract....')
+            approval_tx = await erc1155_contract.functions.setApprovalForAll(
+                current_market_address,True).build_transaction({
+                        'from' : account.address,
+                        'nonce' : nonce,
+                        'maxFeePerGas' : max_fee,
+                        'maxPriorityFeePerGas' : priority_fee
+                    })
+                    
+            signed_approval_tx = w3.eth.account.sign_transaction(approval_tx, self.private_key)
+
+            try:
+                approval_hash = await w3.eth.send_raw_transaction(signed_approval_tx.raw_transaction)
+                logger.info(f"Approval transaction sent. Waiting for confirmation... Hash: {approval_hash.to_0x_hex()}")
+                approval_receipt = await w3.eth.wait_for_transaction_receipt(approval_hash)
+                logger.info(f"Approval transaction confirmed in block: {approval_receipt['blockNumber']}")
+                logger.info(f'Check transaciton at https://basescan.org/tx/{approval_hash.to_0x_hex()}')
+                nonce += 1
+
+            except Exception as e:
+                logger.error(f'An error occured during ERC1155 Contract Approval: {e}', exc_info = True)
+
+            #SELL TRANSACTION
+            logger.info(f"Preparing AMM 'sell' transaction: Selling {outcome_name} shares to receive {return_amount_usd} USDC.")
+
+            outcome_index = 0 if share_type.lower() == 'yes' else 1
+
+            sell_txn = await amm_contract.functions.sell(
+                    return_amount_base_units,
+                    outcome_index,
+                    max_outcome_tokens_to_sell).build_transaction({
+                    'from': account.address,
+                    'nonce': nonce,
+                    'maxFeePerGas': max_fee,
+                    'maxPriorityFeePerGas': priority_fee,
+                    })
+
+            signed_sell_txn = w3.eth.account.sign_transaction(sell_txn, self.private_key)
+
+            try:
+                sell_txn_hash = await w3.eth.send_raw_transaction(signed_sell_txn.raw_transaction)
+                logger.info(f"Sell trade transaction sent: {sell_txn_hash.to_0x_hex()}. Waiting for confirmation...")
+                sell_txn_receipt = await w3.eth.get_transaction_receipt(sell_txn_hash)
+                nonce += 1
+                if sell_txn_receipt['status'] == 1:
+                    logger.info(f"Sell Txn SUCCESSFUL. Confirmed in block: {sell_txn_receipt['blockNumber']}")
+                    logger.info(f'See Transaction: https://basescan.org/tx/{sell_txn_hash.to_0x_hex()} ')
+                    logger.info(f"--- SELL TRADE SUCCESSFUL FOR MARKET : {market_address} ---")
+                    return True
+                
+                else:
+                    logger.error(f"Sell txn FAILED on-chain. Receipt: {sell_txn_receipt}")
+                    return False 
+                
+            except Exception as e:
+                logger.error(f'An error occured during token sell: {e}', exc_info = True)
+                return False
+            
+        except Exception as e:
+            logger.error(f'An error occurred during AMM sell execution: {e}', exc_info=True)
+            return False
 
 
 
-    async def execute_amm_trade(self, market_address: str, share_type: str, size: float):
+
+
+
+    async def execute_amm_buy(self, market_address: str, share_type: str, size: float):
         '''
-        Executes AMM trade via the smart contract directly
+        Executes AMM  buy trade via the smart contract directly
         
         '''
         if not self.private_key:
-            logger.warning("Cannot execute AMM trade: No private key provided.")
-            return
+                logger.error("Cannot execute AMM sell: Private key is not initialized.")
+                return
+            
+        if not self.w3:
+                logger.error("Cannot execute AMM trade: Web provider is not initialized")
+                return
         
         logger.info("--- INITIATING AMM TRADE on market {market_address} ---")
 
         try:
-            rpc_url = os.getenv('BASE_RPC_URL')
+            
             usdc = os.getenv('USDC_ADDRESS')
+            w3 = self.w3
 
-            if not rpc_url:
-                logger.error("BASE_RPC_URL environment variable not set.")
-                return
             
             try:
-                w3 = AsyncWeb3(AsyncHTTPProvider(rpc_url))
 
                 account = w3.eth.account.from_key(self.private_key)
 
@@ -481,6 +605,7 @@ class CustomWebSocket(LimitlessWebSocket):
                 scaling_factor = 10 ** 6  # USDC has 6 decimals
                 investment_amount = int(size * scaling_factor)
                 min_outcome_tokens_to_buy = 0 * scaling_factor
+                nonce = await w3.eth.get_transaction_count(account.address)
                 
 
                 # set gas details
@@ -492,34 +617,33 @@ class CustomWebSocket(LimitlessWebSocket):
             except Exception as e:
                 logger.error(f'An error occured during web3 and parameters declaration: {e}', exc_info = True)
 
-            try:
-                # approve USDC token
-                logger.info('Approving USDC token.....')
-                usdc_txn = await usdc_contract.functions.approve(market_address, investment_amount).build_transaction({
+            
+            #USDC APPROVAL
+            logger.info('Approving USDC token.....')
+            usdc_txn = await usdc_contract.functions.approve(market_address, investment_amount).build_transaction({
                     'from' : account.address,
-                    'nonce' : await w3.eth.get_transaction_count(account.address),
+                    'nonce' : nonce,
                     'maxFeePerGas' : max_fee,
                     'maxPriorityFeePerGas' : priority_fee
                 })
                 
-                signed_usdc_txn = w3.eth.account.sign_transaction(usdc_txn, self.private_key)
+            signed_usdc_txn = w3.eth.account.sign_transaction(usdc_txn, self.private_key)
+
+            try:
                 usdc_txn_hash = await w3.eth.send_raw_transaction(signed_usdc_txn.raw_transaction)
                 logger.info(f"Approve txn sent: {usdc_txn_hash.to_0x_hex()}. Waiting for confirmation...")
-
                 usdc_txn_receipt = await w3.eth.wait_for_transaction_receipt(usdc_txn_hash)
-                logger.info(f"USDT txn confirmed in block: {usdc_txn_receipt.blockNumber}")
-                logger.info(f'USDC approved... Transaction hash: https://basescan.org/tx/{usdc_txn_hash.to_0x_hex()}')
-
+                logger.info(f"USDT txn confirmed in block: {usdc_txn_receipt['blockNumber']}")
+                logger.info(f'USDC approved... Check transaction: https://basescan.org/tx/{usdc_txn_hash.to_0x_hex()}')
+                nonce += 1
 
             except Exception as e:
                 logger.error(f'An error occured during USDC Approval: {e}', exc_info = True)
 
-            try:
-                # buy token share
-                logger.info(f"Preparing AMM 'buy' transaction: {size} USDC for {outcome_name} Shares")
-                
-        
-                buy_txn = await amm_contract.functions.buy(investment_amount,
+            
+            #BUY TRANSACTION
+            logger.info(f"Preparing AMM 'buy' transaction: {size} USDC for {outcome_name} Shares")
+            buy_txn = await amm_contract.functions.buy(investment_amount,
                                                             outcome_index,
                                                             min_outcome_tokens_to_buy).build_transaction({
                     'from' : account.address,
@@ -528,18 +652,26 @@ class CustomWebSocket(LimitlessWebSocket):
                     'maxPriorityFeePerGas' : priority_fee
                 })
                 
-                signed_buy_txn = w3.eth.account.sign_transaction(buy_txn, self.private_key)
+            signed_buy_txn = w3.eth.account.sign_transaction(buy_txn, self.private_key)
+
+            try:
                 buy_txn_hash = await w3.eth.send_raw_transaction(signed_buy_txn.raw_transaction)
 
                 logger.info(f"Buy txn sent: {buy_txn_hash.hex()}. Waiting for confirmation...")
         
                 buy_txn_receipt = await w3.eth.wait_for_transaction_receipt(buy_txn_hash)
+                nonce +=1
 
-                logger.info(f"Buy txn confirmed in block: {buy_txn_receipt.blockNumber}")
-
-                logger.info(f'See transaction: https://basescan.org/tx/{buy_txn_hash.to_0x_hex()} ')
-
-                logger.info(f"--- TRADE SUCCESSFUL FOR MARKET : {market_address} ---")
+                if buy_txn_receipt['status'] == 1:
+                    logger.info(f"Buy txn SUCCESSFUL. Confirmed in block: {buy_txn_receipt['blockNumber']}")
+                    logger.info(f'See transaction: https://basescan.org/tx/{buy_txn_hash.to_0x_hex()} ')
+                    logger.info(f"--- TRADE SUCCESSFUL FOR MARKET : {market_address} ---")
+                    return True
+                
+                else:
+                    logger.error(f"Buy txn FAILED on-chain. Receipt: {buy_txn_receipt}")
+                    
+                    return False 
 
             except Exception as e:
                 logger.error(f'An error occured during token buy: {e}', exc_info = True)
@@ -547,7 +679,45 @@ class CustomWebSocket(LimitlessWebSocket):
 
         except Exception as e:
             logger.error(f'An error occured during AMM trade execution: {e}', exc_info = True)
+            return False
 
+
+
+
+    async def get_share_balance(self, market_address: str, share_type: str) -> int:
+        """
+        Queries the contract to get the actual balance of a specific share token.
+        Returns the balance in base unit .
+        """
+        if not self.w3 or not self.private_key:
+            return 0 
+            
+        w3 = self.w3
+        erc1155_address = os.getenv('CONDITIONAL_TOKEN_ADDRESS')
+
+        try:
+            account = w3.eth.account.from_key(self.private_key)
+
+            market_data = self.market_data_cache.get(market_address)
+            if not market_data or 'tokens' not in market_data:
+                return 0
+            
+
+            conditional_tokens_address = w3.to_checksum_address(erc1155_address)
+            token_id = market_data['tokens'][share_type.lower()]
+            
+            with open('config/conditional_abi.json', 'r') as f:
+                    erc1155_abi = json.load(f)
+
+            token_contract = w3.eth.contract(address=conditional_tokens_address, abi=erc1155_abi)
+            
+            balance = await token_contract.functions.balanceOf(account.address, int(token_id)).call()
+            return balance
+        
+
+        except Exception as e:
+            logger.error(f"Failed to get share balance for {market_address}: {e}")
+            return 0
 
 
     async def wait(self):

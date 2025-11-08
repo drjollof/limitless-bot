@@ -6,7 +6,17 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+
+BUY_NO_THRESHOLD = 1.60  
+BUY_YES_THRESHOLD = 1.60 
+TRADE_AMOUNT_USD = 1
+STOP_LOSS_PERCENTAGE = 0.80
+
+OPEN_POSITIONS = {}
+
+
 async def check_and_execute_buy_strategy(market_data: dict, client: "CustomWebSocket"):
+
     """
     trading strategy: Buy 'NO' shares if the price is below a certain threshold.
     Buy 'YES' shares if the price is below a certain threshold.
@@ -15,8 +25,8 @@ async def check_and_execute_buy_strategy(market_data: dict, client: "CustomWebSo
 
     #trade_market_address = market_data.get('market_address')
     trade_market_address = market_data['market_address']
-    no_price = market_data.get('no_price')
-    yes_price = market_data.get('yes_price')
+    no_price = market_data['no_price']
+    yes_price = market_data['yes_price']
     full_market_data = client.market_data_cache.get(trade_market_address)
 
     if not full_market_data:
@@ -26,59 +36,102 @@ async def check_and_execute_buy_strategy(market_data: dict, client: "CustomWebSo
 
 
     logging.info(f"Evaluating strategy for market {trade_market_address}. Current YES price: ${yes_price:.2f}. Current NO price: ${no_price:.2f}.")
-    
-    #check if current market address is already in traded market
-    if trade_market_address in client.traded_markets:
-        return
-    
 
-    # strategy logic goes here
-    
-    BUY_NO_THRESHOLD = 1.60  
-    BUY_YES_THRESHOLD = 1.60 
+    if trade_market_address not in OPEN_POSITIONS and trade_market_address not in client.traded_markets:
+
+        if no_price >= BUY_NO_THRESHOLD:
+            logger.info(f"STRATEGY TRIGGERED: 'NO' price is at or above threshold. Buying NO...")
 
 
+            if market_type == 'clob':
+                await client.place_order(
+                    market_address=trade_market_address, 
+                    share_type="NO",
+                    size=TRADE_AMOUNT_USD,        
+                    price=market_data['no_price']
+            )
+            
+            elif market_type == 'amm':
+                trade =  await client.execute_amm_buy(
+                        market_address=trade_market_address,
+                        share_type= 'NO',
+                        size=TRADE_AMOUNT_USD
+                        )
+            
+                if trade:
+                        logger.info(f"Successfully entered NO position for market {trade_market_address}. Updating state...")
+                        client.traded_markets.add(trade_market_address)
+                        OPEN_POSITIONS[trade_market_address] = {'side': 'NO', 'entry_price': no_price, 'size': TRADE_AMOUNT_USD}
+                    
+                else:
+                        logger.warning(f"Buy trade for NO on {trade_market_address} failed. State not updated.")
 
-    if market_data['no_price'] >= BUY_NO_THRESHOLD:
-        logger.info(f"STRATEGY TRIGGERED: 'NO' price is at or above threshold. Buying NO.")
 
-        # add market address to memory to avoid duplicate trade
-        client.traded_markets.add(trade_market_address)
 
-        if market_type == 'clob':
-            await client.place_order(
-                market_address=trade_market_address, 
-                share_type="NO",
-                size=1.0,         # $1 for testing
-                price=market_data['no_price']
-        )
-        
-        elif market_type == 'amm':
-            await client.execute_amm_trade(
-                market_address=trade_market_address,
-                share_type= 'NO',
-                size=1
+        if yes_price >= BUY_YES_THRESHOLD:
+            logger.info(f"STRATEGY TRIGGERED: 'YES' price is at or above threshold. Buying YES.")
+            
+         
+            if market_type == 'clob':
+                await client.place_order(
+                market_address= trade_market_address,
+                share_type="YES",
+                size=TRADE_AMOUNT_USD,            
+                price=market_data['yes_price']
+            )
+            
+
+            elif market_type == 'amm':
+               
+               trade_successful =  await client.execute_amm_buy(
+                        market_address=trade_market_address,
+                        share_type= 'YES',
+                        size=TRADE_AMOUNT_USD
+                        )
+            
+               if trade_successful:
+                        logger.info(f"Successfully entered YES position for market {trade_market_address}. Updating state...")
+                        client.traded_markets.add(trade_market_address)
+                        OPEN_POSITIONS[trade_market_address] = {'side': 'YES', 'entry_price': yes_price, 'size': TRADE_AMOUNT_USD}
+                    
+               else:
+                        logger.warning(f"Buy trade for YES on {trade_market_address} failed. State not updated.")
+
+
+
+    elif trade_market_address in OPEN_POSITIONS: 
+            position = OPEN_POSITIONS[trade_market_address]
+            side = position['side']
+            entry_price = position['entry_price']
+            stop_loss_trigger_price = entry_price * STOP_LOSS_PERCENTAGE
+
+            current_price = yes_price if side == 'YES' else no_price
+            
+            
+            if current_price <= stop_loss_trigger_price:
+                logger.info(f"!!! STOP-LOSS TRIGGERED for {side} on {trade_market_address} !!!")
+
+            
+            share_balance = await client.get_share_balance(trade_market_address, side)
+            logger.info(f"Current on-chain balance of {side} shares: {share_balance}")
+
+            if share_balance > 0:
+                
+                
+                usdc_to_get_back = (share_balance / 10**6) * current_price # Approximate
+                
+             
+                sell_successful = await client.execute_amm_sell(
+                    market_address=trade_market_address,
+                    share_type=side,
+                    return_amount_usd=usdc_to_get_back
+
                 )
 
+                
+                if sell_successful:
+                    logger.info(f"Successfully exited position for market {trade_market_address}. Updating state.")
+                    del OPEN_POSITIONS[trade_market_address]
 
-    if market_data['yes_price'] >= BUY_YES_THRESHOLD:
-        logger.info(f"STRATEGY TRIGGERED: 'YES' price is at or above threshold. Buying YES.")
-        
-        # add market address to memory to avoid duplicate trade
-        client.traded_markets.add(trade_market_address)
-
-        if market_type == 'clob':
-            await client.place_order(
-            market_address= trade_market_address,
-            share_type="YES",
-            size=1.0,                # $1 for testing
-            price=market_data['yes_price']
-        )
-        
-        elif market_type == 'amm':
-            await client.execute_amm_trade(
-                market_address= trade_market_address,
-                share_type= 'YES',
-                size=1 # $1 for testing
-            )
-
+                else:
+                    logger.warning(f"Sell trade for {trade_market_address} failed. State not updated.")

@@ -11,7 +11,6 @@ from dotenv import load_dotenv
 load_dotenv()
 
 os.makedirs('logs', exist_ok=True)
-# Setup basic logging to see the bot's activity
 logging.basicConfig(level=logging.DEBUG if os.getenv('DEBUG', 'false').lower() == 'true' else logging.INFO, 
                     format='%(asctime)s  - %(levelname)s - %(filename)s - %(funcName)s - %(message)s',
                     handlers=[
@@ -19,7 +18,7 @@ logging.basicConfig(level=logging.DEBUG if os.getenv('DEBUG', 'false').lower() =
         logging.StreamHandler()
     ])
 
-#clean up noisy logging
+
 logging.getLogger("web3").setLevel(logging.WARNING)
 logging.getLogger("websockets").setLevel(logging.WARNING)
 logging.getLogger("socketio").setLevel(logging.WARNING)
@@ -30,7 +29,7 @@ logging.getLogger("engineio").setLevel(logging.WARNING)
 # Market updater background task to periodically fetch new markets and update subscriptions
 async def market_updater_task(client: CustomWebSocket, initial_markets: list):
   
-    # This is responsible for the first connection.
+   
     try:
         await client.connect()
     except Exception as e:
