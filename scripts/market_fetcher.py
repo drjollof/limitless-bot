@@ -77,8 +77,8 @@ def filter_hourly_markets(markets):
         try:
             if 'tokens' not in market:
                 tokens = { 
-                          'no': market['positionIds'][0] if 'positionIds' in market else '0',
-                          'yes': market['positionIds'][1] if 'positionIds' in market else '0'
+                          'yes': market['positionIds'][0] if 'positionIds' in market else '0',
+                          'no': market['positionIds'][1] if 'positionIds' in market else '0'
                           }
                 merged_markets.append({
                 'slug': market.get('slug', 'unknown'),

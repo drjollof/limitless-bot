@@ -130,7 +130,7 @@ async def market_updater_task(client: CustomWebSocket, initial_markets: list):
 
 
 
-# Main function to initialize and run the bot.
+
 async def main():
     
     logging.info("Starting the trading bot...")
@@ -172,24 +172,17 @@ async def main():
     # test for single market
     single_market = valid_active_markets[:1]
 
-    # Extract market addresses for subscription
-    #MARKET_ADDRESSES = [m['address'] for m in valid_active_markets if m.get('address') and m['address'] != '0']
-    #MARKET_ADDRESSES = [m['address'] for m in single_market if m.get('address') and m['address'] != '0']
-
-    # if not MARKET_ADDRESSES:
-    #     logging.error("No valid market addresses found in the loaded market data. Exiting.")
-    #     return
-
+   
     # Initialize the WebSocket client with strategy and initial markets
     client = CustomWebSocket(
         websocket_url=websocket_url,
         private_key=private_key, 
         strategy_func=check_and_execute_buy_strategy,
-        initial_markets = active_markets,  #valid_active_markets,
+        initial_markets =  active_markets,  
         api_url=api_url
     )
 
-    # Start the market updater background task
+    # Starts the market updater background task
     updater_task = None
     try:
         

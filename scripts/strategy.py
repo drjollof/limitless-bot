@@ -7,10 +7,13 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-BUY_NO_THRESHOLD = 1.60  
-BUY_YES_THRESHOLD = 1.60 
+BUY_NO_THRESHOLD = 0.60 
+BUY_YES_THRESHOLD = 0.60
 TRADE_AMOUNT_USD = 1
-STOP_LOSS_PERCENTAGE = 0.80
+
+STOP_LOSS_FOR_YES_POSITION = 0.50
+STOP_LOSS_FOR_NO_POSITION = 0.50
+
 
 OPEN_POSITIONS = {}
 
@@ -102,36 +105,75 @@ async def check_and_execute_buy_strategy(market_data: dict, client: "CustomWebSo
     elif trade_market_address in OPEN_POSITIONS: 
             position = OPEN_POSITIONS[trade_market_address]
             side = position['side']
-            entry_price = position['entry_price']
-            stop_loss_trigger_price = entry_price * STOP_LOSS_PERCENTAGE
 
-            current_price = yes_price if side == 'YES' else no_price
+            if side == 'YES':
+                stop_loss_trigger_price =  STOP_LOSS_FOR_YES_POSITION
+
+                current_price = yes_price 
+                
             
-            
-            if current_price <= stop_loss_trigger_price:
-                logger.info(f"!!! STOP-LOSS TRIGGERED for {side} on {trade_market_address} !!!")
-
-            
-            share_balance = await client.get_share_balance(trade_market_address, side)
-            logger.info(f"Current on-chain balance of {side} shares: {share_balance}")
-
-            if share_balance > 0:
-                
-                
-                usdc_to_get_back = (share_balance / 10**6) * current_price # Approximate
-                
-             
-                sell_successful = await client.execute_amm_sell(
-                    market_address=trade_market_address,
-                    share_type=side,
-                    return_amount_usd=usdc_to_get_back
-
-                )
+                if current_price <= stop_loss_trigger_price:
+                    logger.info(f"!!! STOP-LOSS TRIGGERED for YES position on {trade_market_address} !!!")
+                    logger.info(f"Current YES price (${current_price:.2f}) is at or below stop-loss level (${stop_loss_trigger_price:.2f}).")
 
                 
-                if sell_successful:
-                    logger.info(f"Successfully exited position for market {trade_market_address}. Updating state.")
-                    del OPEN_POSITIONS[trade_market_address]
+                    share_balance = await client.get_share_balance(trade_market_address, side)
+                    logger.info(f"Current on-chain balance of {side} shares: {share_balance}")
 
-                else:
-                    logger.warning(f"Sell trade for {trade_market_address} failed. State not updated.")
+                    if share_balance > 0:
+                        
+                        
+                        usdc_to_get_back = (share_balance / 10**6) * current_price # Approximate
+                        logger.info(f"Sending sell transaction for {side} shares to receive ${usdc_to_get_back:.2f}")
+                        
+                    
+                        sell_successful = await client.execute_amm_sell(
+                            market_address=trade_market_address,
+                            share_type=side,
+                            return_amount_usd=usdc_to_get_back
+
+                        )
+
+                        
+                        if sell_successful:
+                            logger.info(f"Successfully exited position for market {trade_market_address}. Updating state.")
+                            del OPEN_POSITIONS[trade_market_address]
+                            return
+
+                    else:
+                        logger.warning(f"Sell trade for {trade_market_address} failed. State not updated.")
+
+
+            elif side == 'NO':
+                stop_loss_trigger_price = STOP_LOSS_FOR_NO_POSITION
+                current_price = no_price
+
+                if current_price <= stop_loss_trigger_price:
+                    logger.info(f"!!! STOP-LOSS TRIGGERED for NO position on {trade_market_address} !!!")
+                    logger.info(f"Current NO price (${current_price:.2f}) is at or below stop-loss level (${stop_loss_trigger_price:.2f}).")
+
+                
+                    share_balance = await client.get_share_balance(trade_market_address, side)
+                    logger.info(f"Current on-chain balance of {side} shares: {share_balance}")
+
+                    if share_balance > 0:
+                        
+                        
+                        usdc_to_get_back = (share_balance / 10**6) * current_price # Approximate
+
+                        logger.info(f"Sending sell transaction for {side} shares to receive ${usdc_to_get_back:.2f}")
+
+                        sell_successful = await client.execute_amm_sell(
+                            market_address=trade_market_address,
+                            share_type=side,
+                            return_amount_usd=usdc_to_get_back
+
+                        )
+
+                        if sell_successful:
+                            logger.info(f"Successfully exited position for market {trade_market_address}. Updating state.")
+                            del OPEN_POSITIONS[trade_market_address]
+                            return
+
+                    else:
+                        logger.warning(f"Sell trade for {trade_market_address} failed. State not updated.")

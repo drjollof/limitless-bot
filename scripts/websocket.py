@@ -164,6 +164,29 @@ class LimitlessWebSocket:
         await self.sio.wait()
 
    
+# Nonce manager to manage nonce for multiple concurrent trades 
+class NonceManager:
+    def __init__(self, w3: AsyncWeb3, address: str):
+        self._w3 = w3
+        self._address = address
+        self._lock = asyncio.Lock()
+        self._nonce = -1  # Initialize to -1 to force a fetch on the first call
+
+    async def get_nonce(self) -> int:
+        async with self._lock:
+            if self._nonce == -1:
+
+                #first time, fetch from the network
+                self._nonce = await self._w3.eth.get_transaction_count(self._address)
+            else:
+                # For subsequent calls, just increment the local copy
+                self._nonce += 1
+            return self._nonce
+
+
+
+
+
 
 
 # Custom websocket client with strategy integration inherited from main websocket class
@@ -177,6 +200,7 @@ class CustomWebSocket(LimitlessWebSocket):
         self.api_url = api_url
         self.market_data_cache = {}
         self.w3 = None
+        self.nonce_manager = None
         self.traded_markets = set()
         self.subscribed_markets = [m['address'] for m in initial_markets if m.get('address') and m['address'] != '0']
 
@@ -185,6 +209,9 @@ class CustomWebSocket(LimitlessWebSocket):
 
         if rpc_url:
             self.w3 = AsyncWeb3(AsyncHTTPProvider(rpc_url))
+            account = self.w3.eth.account.from_key(self.private_key)
+            self.nonce_manager = NonceManager(self.w3, account.address)
+
             logger.info("Initialized Web3 provider for AMM trading")
 
         else:
@@ -345,7 +372,28 @@ class CustomWebSocket(LimitlessWebSocket):
         logger.info(f"Subscribing to {len(market_addresses)} market(s).")
         payload = {'marketAddresses': market_addresses}
         await self.sio.emit('subscribe_market_prices', payload, namespace='/markets')
-       
+    
+
+    async def _ensure_web3_connected(self) -> bool:
+        """
+        Checks the Web3 connection and returns True if it's healthy.
+        """
+        if not self.w3:
+            return False
+        
+        try:
+            
+            if await self.w3.is_connected():
+                return True
+            
+            else:
+                logger.warning("Web3 provider is not connected. Attempting to reconnect...")
+                self.w3 = AsyncWeb3(AsyncHTTPProvider(os.getenv('BASE_RPC_URL')))
+                return await self.w3.is_connected()
+            
+        except Exception as e:
+            logger.error(f"Failed to check Web3 connection: {e}")
+            return False
 
         
     # update market subscriptions after markets expires in an hour... used by the market updater task in main.py
@@ -443,116 +491,122 @@ class CustomWebSocket(LimitlessWebSocket):
     
 
 
-    async def execute_amm_sell(self, market_address: str, share_type: str, return_amount_usd: float):
+    async def execute_amm_sell(self, market_address: str, share_type: str, return_amount_usd: float) -> bool:
         """
         Executes a SELL order on an AMM market to get a specific amount of USDC back.
         """
-        try:
-            if not self.private_key:
-                logger.error("Cannot execute AMM sell: Private key is not initialized.")
-                return
+
+        if not await self._ensure_web3_connected():
+            logger.error("Cannot execute AMM sell: Web3 provider is not connected.")
+            return False
+
+        
+        if not self.private_key or not self.w3 or not self.nonce_manager:
+            logger.error("Cannot execute AMM sell: Web provider or NonceManger is not initialized.")
+            return False
             
-            if not self.w3:
-                logger.error("Cannot execute AMM trade: Web provider is not initialized")
-                return
-                
+           
+        logger.info(f"--- INITIATING AMM SELL on market {market_address} ---")    
+
+        try:
             w3 = self.w3
             erc1155_address = os.getenv('CONDITIONAL_TOKEN_ADDRESS')
+            
+            if not erc1155_address:
+                logger.error("CRITICAL: CONDITIONAL_TOKEN_ADDRESS environment variable not set.. Cannot execute trade")
+                return False
 
-            logger.info(f"--- INITIATING AMM SELL on market {market_address} ---")
-
-            try:
-                account = w3.eth.account.from_key(self.private_key)
+            
+            account = w3.eth.account.from_key(self.private_key)
                 
-                with open('config/amm_abi.json', 'r') as f:
+            with open('config/amm_abi.json', 'r') as f:
                     amm_abi = json.load(f)
 
-                with open('config/conditional_abi.json', 'r') as f:
+            with open('config/conditional_abi.json', 'r') as f:
                         erc1155_abi = json.load(f)
                 
-                current_market_address = w3.to_checksum_address(market_address)
-                conditional_tokens_address = w3.to_checksum_address(erc1155_address)
+            current_market_address = w3.to_checksum_address(market_address)
+            conditional_tokens_address = w3.to_checksum_address(erc1155_address)
 
-                amm_contract = w3.eth.contract(address=current_market_address, abi=amm_abi)
-                erc1155_contract = w3.eth.contract(address= conditional_tokens_address,abi = erc1155_abi )
+            amm_contract = w3.eth.contract(address=current_market_address, abi=amm_abi)
+            erc1155_contract = w3.eth.contract(address= conditional_tokens_address,abi = erc1155_abi )
 
-                # set sell transaction parameters
-                outcome_index = 0 if share_type.lower() == 'yes' else 0
-                outcome_name = 'YES' if outcome_index == 0 else 'NO'
-                scaling_factor = 10**6
-                return_amount_base_units = int(return_amount_usd * scaling_factor)
-                nonce = await w3.eth.get_transaction_count(account.address)
-                max_outcome_tokens_to_sell = 2**256 - 1 # "Infinite" amount
-
-                # set gas details
-                priority_fee = w3.to_wei(1, 'wei') 
-                latest_block = await w3.eth.get_block('latest')
-                base_fee = latest_block['baseFeePerGas']
-                max_fee = base_fee * 2
-
-            except Exception as e:
-                logger.error(f'An error occured during web3 and parameters declaration: {e}', exc_info = True)
+            # set sell transaction parameters
+            outcome_index = 0 if share_type.lower() == 'yes' else 1
+            outcome_name = 'YES' if outcome_index == 0 else 'NO'
+            scaling_factor = 10**6
+            return_amount_base_units = int(return_amount_usd * scaling_factor)
             
-            
-            #ERC1155 APPROVAL TRANSACTION
+            max_outcome_tokens_to_sell = 2**256 - 1 # "Infinite" amount
 
-            logger.info('Approving ERC1155 contract....')
-            approval_tx = await erc1155_contract.functions.setApprovalForAll(
-                current_market_address,True).build_transaction({
-                        'from' : account.address,
-                        'nonce' : nonce,
-                        'maxFeePerGas' : max_fee,
-                        'maxPriorityFeePerGas' : priority_fee
-                    })
-                    
-            signed_approval_tx = w3.eth.account.sign_transaction(approval_tx, self.private_key)
+            # set gas details
+            priority_fee = w3.to_wei(1, 'wei') 
+            latest_block = await w3.eth.get_block('latest')
+            base_fee = latest_block['baseFeePerGas']
+            max_fee = base_fee * 2
 
-            try:
+            is_approved = await erc1155_contract.functions.isApprovedForAll(account.address, current_market_address).call()
+
+
+            if not is_approved:
+
+                logger.warning('ERC1155 is not approved yet.. Sending approval transaction....')
+
+                #ERC1155 APPROVAL TRANSACTION
+                logger.info('Approving ERC1155 contract....')
+                approve_sell_nonce = await self.nonce_manager.get_nonce()
+                approval_tx = await erc1155_contract.functions.setApprovalForAll(
+                    current_market_address,True).build_transaction({
+                            'from' : account.address,
+                            'nonce' : approve_sell_nonce,
+                            'maxFeePerGas' : max_fee,
+                            'maxPriorityFeePerGas' : priority_fee
+                        })
+                        
+                signed_approval_tx = w3.eth.account.sign_transaction(approval_tx, self.private_key)
+
+                
                 approval_hash = await w3.eth.send_raw_transaction(signed_approval_tx.raw_transaction)
                 logger.info(f"Approval transaction sent. Waiting for confirmation... Hash: {approval_hash.to_0x_hex()}")
                 approval_receipt = await w3.eth.wait_for_transaction_receipt(approval_hash)
                 logger.info(f"Approval transaction confirmed in block: {approval_receipt['blockNumber']}")
                 logger.info(f'Check transaciton at https://basescan.org/tx/{approval_hash.to_0x_hex()}')
-                nonce += 1
 
-            except Exception as e:
-                logger.error(f'An error occured during ERC1155 Contract Approval: {e}', exc_info = True)
+            else:
+                logger.info('ERC1155 aproval is already set..skipping approval..')
+            
 
             #SELL TRANSACTION
             logger.info(f"Preparing AMM 'sell' transaction: Selling {outcome_name} shares to receive {return_amount_usd} USDC.")
-
-            outcome_index = 0 if share_type.lower() == 'yes' else 1
+            sell_nonce = await self.nonce_manager.get_nonce()
 
             sell_txn = await amm_contract.functions.sell(
                     return_amount_base_units,
                     outcome_index,
                     max_outcome_tokens_to_sell).build_transaction({
                     'from': account.address,
-                    'nonce': nonce,
+                    'nonce': sell_nonce,
                     'maxFeePerGas': max_fee,
                     'maxPriorityFeePerGas': priority_fee,
                     })
 
             signed_sell_txn = w3.eth.account.sign_transaction(sell_txn, self.private_key)
 
-            try:
-                sell_txn_hash = await w3.eth.send_raw_transaction(signed_sell_txn.raw_transaction)
-                logger.info(f"Sell trade transaction sent: {sell_txn_hash.to_0x_hex()}. Waiting for confirmation...")
-                sell_txn_receipt = await w3.eth.get_transaction_receipt(sell_txn_hash)
-                nonce += 1
-                if sell_txn_receipt['status'] == 1:
+            
+            sell_txn_hash = await w3.eth.send_raw_transaction(signed_sell_txn.raw_transaction)
+            logger.info(f"Sell trade transaction sent: {sell_txn_hash.to_0x_hex()}. Waiting for confirmation...")
+            sell_txn_receipt = await w3.eth.get_transaction_receipt(sell_txn_hash)
+
+            if sell_txn_receipt['status'] == 1:
                     logger.info(f"Sell Txn SUCCESSFUL. Confirmed in block: {sell_txn_receipt['blockNumber']}")
                     logger.info(f'See Transaction: https://basescan.org/tx/{sell_txn_hash.to_0x_hex()} ')
                     logger.info(f"--- SELL TRADE SUCCESSFUL FOR MARKET : {market_address} ---")
                     return True
                 
-                else:
+            else:
                     logger.error(f"Sell txn FAILED on-chain. Receipt: {sell_txn_receipt}")
                     return False 
                 
-            except Exception as e:
-                logger.error(f'An error occured during token sell: {e}', exc_info = True)
-                return False
             
         except Exception as e:
             logger.error(f'An error occurred during AMM sell execution: {e}', exc_info=True)
@@ -563,18 +617,20 @@ class CustomWebSocket(LimitlessWebSocket):
 
 
 
-    async def execute_amm_buy(self, market_address: str, share_type: str, size: float):
+    async def execute_amm_buy(self, market_address: str, share_type: str, size: float) -> bool:
         '''
         Executes AMM  buy trade via the smart contract directly
         
         '''
-        if not self.private_key:
-                logger.error("Cannot execute AMM sell: Private key is not initialized.")
-                return
+
+        if not await self._ensure_web3_connected():
+            logger.error("Cannot execute AMM trade: Web3 provider is not connected.")
+            return False 
+        
+        if not self.private_key or not self.w3 or not self.nonce_manager:
+            logger.error("Cannot execute AMM sell: Web provider or NonceManager is not initialized.")
+            return False
             
-        if not self.w3:
-                logger.error("Cannot execute AMM trade: Web provider is not initialized")
-                return
         
         logger.info("--- INITIATING AMM TRADE on market {market_address} ---")
 
@@ -583,102 +639,103 @@ class CustomWebSocket(LimitlessWebSocket):
             usdc = os.getenv('USDC_ADDRESS')
             w3 = self.w3
 
-            
-            try:
+            if not usdc:
+                logger.error("CRITICAL: USDC_ADDRESS environment variable not set.. Cannot execute trade")
+                return False
 
-                account = w3.eth.account.from_key(self.private_key)
+            account = w3.eth.account.from_key(self.private_key)
 
-                with open('config/amm_abi.json', 'r') as f:
+            with open('config/amm_abi.json', 'r') as f:
                     amm_abi = json.load(f)
 
-                with open('config/usdc_abi.json', 'r') as f:
+            with open('config/usdc_abi.json', 'r') as f:
                     usdc_abi = json.load(f)
 
-                usdc_address = w3.to_checksum_address(usdc)
-                current_market_address = w3.to_checksum_address(market_address)
-                usdc_contract = w3.eth.contract(address = usdc_address, abi = usdc_abi)
-                amm_contract = w3.eth.contract(address = current_market_address, abi = amm_abi)
+            usdc_address = w3.to_checksum_address(usdc)
+            current_market_address = w3.to_checksum_address(market_address)
+            usdc_contract = w3.eth.contract(address = usdc_address, abi = usdc_abi)
+            amm_contract = w3.eth.contract(address = current_market_address, abi = amm_abi)
 
-                # buy parameters
-                outcome_index = 0 if share_type.lower() == 'yes' else 1
-                outcome_name = 'YES' if outcome_index == 0 else 'NO'
-                scaling_factor = 10 ** 6  # USDC has 6 decimals
-                investment_amount = int(size * scaling_factor)
-                min_outcome_tokens_to_buy = 0 * scaling_factor
-                nonce = await w3.eth.get_transaction_count(account.address)
-                
+            # buy parameters
+            outcome_index = 0 if share_type.lower() == 'yes' else 1
+            outcome_name = 'YES' if outcome_index == 0 else 'NO'
+            scaling_factor = 10 ** 6  # USDC has 6 decimals
+            investment_amount = int(size * scaling_factor)
+            min_outcome_tokens_to_buy = 0 * scaling_factor
 
-                # set gas details
-                priority_fee = w3.to_wei(1, 'wei') 
-                latest_block = await w3.eth.get_block('latest')
-                base_fee = latest_block['baseFeePerGas']
-                max_fee = base_fee * 2
+            # set gas details
+            priority_fee = w3.to_wei(1, 'wei') 
+            latest_block = await w3.eth.get_block('latest')
+            base_fee = latest_block.get('baseFeePerGas')
+            max_fee = base_fee * 2
+           
 
-            except Exception as e:
-                logger.error(f'An error occured during web3 and parameters declaration: {e}', exc_info = True)
 
-            
-            #USDC APPROVAL
-            logger.info('Approving USDC token.....')
-            usdc_txn = await usdc_contract.functions.approve(market_address, investment_amount).build_transaction({
-                    'from' : account.address,
-                    'nonce' : nonce,
-                    'maxFeePerGas' : max_fee,
-                    'maxPriorityFeePerGas' : priority_fee
-                })
-                
-            signed_usdc_txn = w3.eth.account.sign_transaction(usdc_txn, self.private_key)
+            current_allowance = await usdc_contract.functions.allowance(account.address, current_market_address).call()
 
-            try:
+            if current_allowance < investment_amount:
+
+                logger.warning(f"USDC allowance ({current_allowance}) is less than required ({investment_amount}). Sending USDC approve transaction...")
+        
+                #USDC APPROVAL
+                logger.info('Approving USDC token.....')
+                approve_nonce = await self.nonce_manager.get_nonce()
+                usdc_txn = await usdc_contract.functions.approve(market_address, investment_amount).build_transaction({
+                        'from' : account.address,
+                        'nonce' : approve_nonce,
+                        'maxFeePerGas' : max_fee,
+                        'maxPriorityFeePerGas' : priority_fee
+                    })
+                    
+                signed_usdc_txn = w3.eth.account.sign_transaction(usdc_txn, self.private_key)
+
                 usdc_txn_hash = await w3.eth.send_raw_transaction(signed_usdc_txn.raw_transaction)
                 logger.info(f"Approve txn sent: {usdc_txn_hash.to_0x_hex()}. Waiting for confirmation...")
                 usdc_txn_receipt = await w3.eth.wait_for_transaction_receipt(usdc_txn_hash)
                 logger.info(f"USDT txn confirmed in block: {usdc_txn_receipt['blockNumber']}")
                 logger.info(f'USDC approved... Check transaction: https://basescan.org/tx/{usdc_txn_hash.to_0x_hex()}')
-                nonce += 1
 
-            except Exception as e:
-                logger.error(f'An error occured during USDC Approval: {e}', exc_info = True)
-
+            else:
+                logger.info("Sufficient USDC allowance already set. Skipping approval.")
             
+
+
+
             #BUY TRANSACTION
             logger.info(f"Preparing AMM 'buy' transaction: {size} USDC for {outcome_name} Shares")
+
+            buy_nonce = await self.nonce_manager.get_nonce()
+
             buy_txn = await amm_contract.functions.buy(investment_amount,
                                                             outcome_index,
                                                             min_outcome_tokens_to_buy).build_transaction({
                     'from' : account.address,
-                    'nonce' : await w3.eth.get_transaction_count(account.address),
+                    'nonce' : buy_nonce,
                     'maxFeePerGas': max_fee,
                     'maxPriorityFeePerGas' : priority_fee
                 })
                 
             signed_buy_txn = w3.eth.account.sign_transaction(buy_txn, self.private_key)
 
-            try:
-                buy_txn_hash = await w3.eth.send_raw_transaction(signed_buy_txn.raw_transaction)
+            buy_txn_hash = await w3.eth.send_raw_transaction(signed_buy_txn.raw_transaction)
 
-                logger.info(f"Buy txn sent: {buy_txn_hash.hex()}. Waiting for confirmation...")
+            logger.info(f"Buy txn sent: {buy_txn_hash.hex()}. Waiting for confirmation...")
         
-                buy_txn_receipt = await w3.eth.wait_for_transaction_receipt(buy_txn_hash)
-                nonce +=1
+            buy_txn_receipt = await w3.eth.wait_for_transaction_receipt(buy_txn_hash)
+            
 
-                if buy_txn_receipt['status'] == 1:
+            if buy_txn_receipt['status'] == 1:
                     logger.info(f"Buy txn SUCCESSFUL. Confirmed in block: {buy_txn_receipt['blockNumber']}")
                     logger.info(f'See transaction: https://basescan.org/tx/{buy_txn_hash.to_0x_hex()} ')
                     logger.info(f"--- TRADE SUCCESSFUL FOR MARKET : {market_address} ---")
                     return True
                 
-                else:
+            else:
                     logger.error(f"Buy txn FAILED on-chain. Receipt: {buy_txn_receipt}")
-                    
                     return False 
 
-            except Exception as e:
-                logger.error(f'An error occured during token buy: {e}', exc_info = True)
-
-
         except Exception as e:
-            logger.error(f'An error occured during AMM trade execution: {e}', exc_info = True)
+            logger.error(f'An error occured during AMM buy trade execution: {e}', exc_info = True)
             return False
 
 
@@ -689,17 +746,29 @@ class CustomWebSocket(LimitlessWebSocket):
         Queries the contract to get the actual balance of a specific share token.
         Returns the balance in base unit .
         """
+
+        if not await self._ensure_web3_connected():
+            logger.error("Cannot get share balance: Web3 provider is not connected.")
+            return 0
+
         if not self.w3 or not self.private_key:
+            logger.error("Cannot get share balance: Web3 provider/private key is not initialized.")
             return 0 
             
         w3 = self.w3
         erc1155_address = os.getenv('CONDITIONAL_TOKEN_ADDRESS')
 
+        if not erc1155_address:
+            logger.error('ERC1155 address is not set')
+            return 0
+
         try:
             account = w3.eth.account.from_key(self.private_key)
 
             market_data = self.market_data_cache.get(market_address)
+
             if not market_data or 'tokens' not in market_data:
+                logger.warning('Market_data is not available')
                 return 0
             
 
@@ -723,3 +792,8 @@ class CustomWebSocket(LimitlessWebSocket):
     async def wait(self):
         """Keep connection alive and listen for events."""
         await self.sio.wait()
+
+
+
+
+
