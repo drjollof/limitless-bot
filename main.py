@@ -178,7 +178,7 @@ async def main():
         websocket_url=websocket_url,
         private_key=private_key, 
         strategy_func=check_and_execute_buy_strategy,
-        initial_markets =  active_markets,  
+        initial_markets =  active_markets, #active_markets,  
         api_url=api_url
     )
 
