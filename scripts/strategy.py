@@ -46,7 +46,7 @@ async def check_and_execute_buy_strategy(market_data: dict, client: "CustomWebSo
     minutes_to_expiration = (expiration_time_utc - now_utc).total_seconds()/60
 
 
-    logging.info(f"Evaluating strategy for market {trade_market_address}...{minutes_to_expiration:.2f} mins left" f" Current YES price: ${yes_price:.2f}. Current NO price: ${no_price:.2f}.")
+    logging.debug(f"Evaluating strategy for market {trade_market_address}...{minutes_to_expiration:.2f} mins left" f" Current YES price: ${yes_price:.2f}. Current NO price: ${no_price:.2f}.")
 
     if trade_market_address in TRADE_IN_PROCESS:
         logger.debug(f"Trade already in process for {trade_market_address}.. skipping..")
@@ -140,7 +140,7 @@ async def check_and_execute_buy_strategy(market_data: dict, client: "CustomWebSo
                                     share_type= share_type_to_buy,
                                     size=TRADE_AMOUNT_USD,
                                     price = price_to_buy,
-                                    reason= f"{share_type_to_buy} price >= {BUY_THRESHOLD} at {TIME_WINDOW_MINUTES} left"
+                                    reason= f"{share_type_to_buy} price >= {BUY_THRESHOLD} at {TIME_WINDOW_MINUTES} mins left"
                                     )
                         
                         if buy_successful:

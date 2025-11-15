@@ -1,6 +1,7 @@
 import os
 import asyncio
 import logging
+import logging.handlers
 from datetime import datetime, timezone
 from scripts.websocket import CustomWebSocket
 from scripts.strategy import check_and_execute_buy_strategy
@@ -11,18 +12,33 @@ from dotenv import load_dotenv
 load_dotenv()
 
 os.makedirs('logs', exist_ok=True)
-logging.basicConfig(level=logging.DEBUG if os.getenv('DEBUG', 'false').lower() == 'true' else logging.INFO, 
-                    format='%(asctime)s  - %(levelname)s - %(filename)s - %(funcName)s - %(message)s',
-                    handlers=[
-        logging.FileHandler('logs/bot.log'),
-        logging.StreamHandler()
-    ])
+log_level = logging.DEBUG if os.getenv('DEBUG', 'false').lower() == 'true' else logging.INFO
 
+
+logging.basicConfig(
+    level=log_level,
+    format='%(asctime)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s',
+    handlers=[
+        logging.handlers.TimedRotatingFileHandler(
+            'logs/bot.log', 
+            when='midnight', 
+            backupCount=7    
+        )
+    ],
+    force=True
+)
 
 logging.getLogger("web3").setLevel(logging.WARNING)
 logging.getLogger("websockets").setLevel(logging.WARNING)
 logging.getLogger("socketio").setLevel(logging.WARNING)
 logging.getLogger("engineio").setLevel(logging.WARNING)
+
+
+logger = logging.getLogger(__name__)
+logger.info("==================================================")
+logger.info("Bot starting up. Logging configured successfully.")
+logger.info("Log level: %s", logging.getLevelName(log_level))
+logger.info("==================================================")
 
 
 
