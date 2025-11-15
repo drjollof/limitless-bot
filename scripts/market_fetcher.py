@@ -75,7 +75,7 @@ def filter_hourly_markets(markets):
 
     for market in hourly_markets:
         try:
-            if 'tokens' not in market:
+            if 'tokens' not in market and 'xrp' in market['slug']:
                 tokens = { 
                           'yes': market['positionIds'][0] if 'positionIds' in market else '0',
                           'no': market['positionIds'][1] if 'positionIds' in market else '0'
