@@ -259,7 +259,7 @@ class CustomWebSocket(LimitlessWebSocket):
 
         @sio.event(namespace='/markets')
         async def newPriceData(data):
-            logging.info("Received newPriceData event from server.")
+            logging.debug("Received newPriceData event from server.")
 
             try:
                 market_address = None
@@ -296,7 +296,7 @@ class CustomWebSocket(LimitlessWebSocket):
                 no_price = float(prices['noPrice']) / 100
 
                 self.latest_prices[market_address] = {'yes': yes_price, 'no': no_price, 'timestamp': time.time()}
-                logging.info(f"Parsed Market {market_address}: YES=${yes_price:.2f}, NO=${no_price:.2f}")
+                logging.debug(f"Parsed Market {market_address}: YES=${yes_price:.2f}, NO=${no_price:.2f}")
 
                 
                 # Execute strategy if defined
