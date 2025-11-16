@@ -49,7 +49,7 @@ async def check_and_execute_buy_strategy(market_data: dict, client: "CustomWebSo
     logging.debug(f"Evaluating strategy for market {trade_market_address}...{minutes_to_expiration:.2f} mins left" f" Current YES price: ${yes_price:.2f}. Current NO price: ${no_price:.2f}.")
 
     if trade_market_address in TRADE_IN_PROCESS:
-        logger.debug(f"Trade already in process for {trade_market_address}.. skipping..")
+        logger.info(f"Trade already in process for {trade_market_address}.. skipping..")
         return
     
     #STOP-LOSS LOGIC
@@ -60,12 +60,12 @@ async def check_and_execute_buy_strategy(market_data: dict, client: "CustomWebSo
 
          if current_price <= STOP_LOSS_THRESHOLD:
 
-            logger.info(f"!!! STOP-LOSS TRIGGERED for YES position on {trade_market_address} !!!")
+            logger.info(f"!!! STOP-LOSS TRIGGERED for {side} position on {trade_market_address} !!!")
                     
                     
             try:
                 TRADE_IN_PROCESS.add(trade_market_address)
-                logger.info(f"Current YES price (${current_price:.2f}) is at or below stop-loss level (${STOP_LOSS_THRESHOLD:.2f}).")
+                logger.info(f"Current {side} price (${current_price:.2f}) is at or below stop-loss level (${STOP_LOSS_THRESHOLD:.2f}).")
 
                     
                 share_balance = await client.get_share_balance(trade_market_address, side)

@@ -83,14 +83,14 @@ async def market_updater_task(client: CustomWebSocket, initial_markets: list):
                     # Sleep until 15 seconds after the market expires to ensure the new one is available.
                     # max(15) to prevent negative sleep times if we're already past expiration.
 
-                    sleep_duration = max(15, seconds_to_expiration + 15)
+                    sleep_duration = max(15, seconds_to_expiration + 300)
             
 
             logging.info(f"Market updater task is sleeping for {int(sleep_duration)} seconds (until next market activation).")
             await asyncio.sleep(sleep_duration)
             
 
-            logging.info("Woke up. Now attempting to fetch NEW hourly markets...")
+            logging.info("Now attempting to fetch NEW hourly markets...")
 
             # Get the expiration of the last traded markets
             old_expiration_ts = min([m.get('expiration', 0) for m in markets_to_update]) if markets_to_update else 0
