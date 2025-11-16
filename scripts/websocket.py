@@ -173,18 +173,13 @@ class NonceManager:
         self._w3 = w3
         self._address = address
         self._lock = asyncio.Lock()
-        self._nonce = -1  # Initialize to -1 to force a fetch on the first call
 
     async def get_nonce(self) -> int:
         async with self._lock:
-            if self._nonce == -1:
-
-                #first time, fetch from the network
-                self._nonce = await self._w3.eth.get_transaction_count(self._address)
-            else:
-                # For subsequent calls, just increment the local copy
-                self._nonce += 1
-            return self._nonce
+                
+            nonce = await self._w3.eth.get_transaction_count(self._address, 'pending')
+            
+            return nonce
 
 
 
@@ -548,10 +543,10 @@ class CustomWebSocket(LimitlessWebSocket):
                     max_outcome_tokens_to_sell = 2**256 - 1 # "Infinite" amount
 
                     # set gas details
-                    priority_fee = w3.to_wei(1, 'wei') 
+                    priority_fee = await w3.eth.max_priority_fee 
                     latest_block = await w3.eth.get_block('latest')
                     base_fee = latest_block['baseFeePerGas']
-                    max_fee = base_fee * 2
+                    max_fee = (base_fee * 2) + priority_fee
 
                     is_approved = await erc1155_contract.functions.isApprovedForAll(account.address, current_market_address).call()
 
@@ -566,8 +561,10 @@ class CustomWebSocket(LimitlessWebSocket):
                         approval_tx = await erc1155_contract.functions.setApprovalForAll(
                             current_market_address,True).build_transaction({
                                     'from' : account.address,
-                                    'nonce' : approve_sell_nonce
-                                })
+                                    'nonce' : approve_sell_nonce,
+                                    'maxFeePerGas': max_fee,
+                                    'maxPriorityFeePerGas' : priority_fee
+                                      })
                                 
                         signed_approval_tx = w3.eth.account.sign_transaction(approval_tx, self.private_key)
 
@@ -591,7 +588,9 @@ class CustomWebSocket(LimitlessWebSocket):
                             outcome_index,
                             max_outcome_tokens_to_sell).build_transaction({
                             'from': account.address,
-                            'nonce': sell_nonce
+                            'nonce': sell_nonce,
+                            'maxFeePerGas' : max_fee,
+                            'maxPriorityFeePerGas' : priority_fee
                             })
 
                     signed_sell_txn = w3.eth.account.sign_transaction(sell_txn, self.private_key)
@@ -685,13 +684,14 @@ class CustomWebSocket(LimitlessWebSocket):
                 outcome_name = 'YES' if outcome_index == 0 else 'NO'
                 scaling_factor = 10 ** 6  # USDC has 6 decimals
                 investment_amount = int(size * scaling_factor)
+                approval_amount = investment_amount * 3
                 min_outcome_tokens_to_buy = 0 * scaling_factor
 
                 # set gas details
-                priority_fee = w3.to_wei(1, 'wei') 
+                max_priority_fee_per_gas = await w3.eth.max_priority_fee
                 latest_block = await w3.eth.get_block('latest')
                 base_fee = latest_block.get('baseFeePerGas')
-                max_fee = base_fee * 2
+                max_fee = int(base_fee * 2) + max_priority_fee_per_gas
             
 
 
@@ -699,14 +699,16 @@ class CustomWebSocket(LimitlessWebSocket):
 
                 if current_allowance < investment_amount:
 
-                    logger.warning(f"USDC allowance ({current_allowance}) is less than required ({investment_amount}). Sending USDC approve transaction...")
+                    logger.warning(f"USDC allowance ({current_allowance}) is less than required ({approval_amount}). Sending USDC approve transaction...")
             
                     #USDC APPROVAL
                     logger.info('Approving USDC token.....')
                     approve_nonce = await self.nonce_manager.get_nonce()
-                    usdc_txn = await usdc_contract.functions.approve(market_address, investment_amount).build_transaction({
+                    usdc_txn = await usdc_contract.functions.approve(market_address, approval_amount).build_transaction({
                             'from' : account.address,
                             'nonce' : approve_nonce,
+                            'maxFeePerGas' : max_fee,
+                            'maxPriorityFeePerGas' : max_priority_fee_per_gas
                         })
                         
                     signed_usdc_txn = w3.eth.account.sign_transaction(usdc_txn, self.private_key)
@@ -731,9 +733,11 @@ class CustomWebSocket(LimitlessWebSocket):
                 buy_txn = await amm_contract.functions.buy(investment_amount,
                                                                 outcome_index,
                                                                 min_outcome_tokens_to_buy).build_transaction({
-                        'from' : account.address,
-                        'nonce' : buy_nonce,
-                    })
+                                                                    'from' : account.address,
+                                                                    'nonce' : buy_nonce,
+                                                                    'maxFeePerGas': max_fee,
+                                                                    'maxPriorityFeePerGas' : max_priority_fee_per_gas
+                                                                    })
                     
                 signed_buy_txn = w3.eth.account.sign_transaction(buy_txn, self.private_key)
 
@@ -741,7 +745,7 @@ class CustomWebSocket(LimitlessWebSocket):
 
                 logger.info(f"Buy txn sent: {buy_txn_hash.hex()}. Waiting for confirmation...")
             
-                buy_txn_receipt = await w3.eth.wait_for_transaction_receipt(buy_txn_hash)
+                buy_txn_receipt = await w3.eth.wait_for_transaction_receipt(buy_txn_hash, timeout=60.0)
                 
 
                 if buy_txn_receipt['status'] == 1:
