@@ -629,7 +629,7 @@ class CustomWebSocket(LimitlessWebSocket):
                         
                     
                 except Exception as e:
-                    logger.error(f'An error occurred during AMM sell execution: {e}', exc_info=True)
+                    logger.error(f'An error occurred during AMM sell execution: {e}', exc_info=False)
                     return False
 
 
@@ -655,7 +655,7 @@ class CustomWebSocket(LimitlessWebSocket):
         
         async with self.tx_lock:
             
-            logger.info("--- INITIATING AMM TRADE on market {market_address} ---")
+            logger.info(f"--- INITIATING AMM TRADE on market {market_address} ---")
 
             try:
                 
@@ -745,7 +745,7 @@ class CustomWebSocket(LimitlessWebSocket):
 
                 logger.info(f"Buy txn sent: {buy_txn_hash.hex()}. Waiting for confirmation...")
             
-                buy_txn_receipt = await w3.eth.wait_for_transaction_receipt(buy_txn_hash, timeout=60.0)
+                buy_txn_receipt = await w3.eth.wait_for_transaction_receipt(buy_txn_hash)
                 
 
                 if buy_txn_receipt['status'] == 1:
@@ -774,7 +774,7 @@ class CustomWebSocket(LimitlessWebSocket):
                         return False 
 
             except Exception as e:
-                logger.error(f'An error occured during AMM buy trade execution: {e}', exc_info = True)
+                logger.error(f'An error occured during AMM buy trade execution: {e}', exc_info = False)
                 return False
 
 
