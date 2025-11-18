@@ -8,10 +8,16 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-BUY_THRESHOLD = 0.70
-TRADE_AMOUNT_USD = 1
+
 STOP_LOSS_THRESHOLD = 0.20
 TIME_WINDOW_MINUTES = 20
+
+
+HIGH_CONVICTION_THRESHOLD = 0.90  
+HIGH_CONVICTION_SIZE_USD = 3     
+
+MEDIUM_CONVICTION_THRESHOLD = 0.70 
+MEDIUM_CONVICTION_SIZE_USD = 1  
 
 
 TRADE_IN_PROCESS = set()
@@ -108,20 +114,49 @@ async def check_and_execute_buy_strategy(market_data: dict, client: "CustomWebSo
     elif trade_market_address not in OPEN_POSITIONS and trade_market_address not in client.traded_markets:
 
         if minutes_to_expiration <= TIME_WINDOW_MINUTES:
+            trade_to_make = None
 
-            share_type_to_buy = None
-            price_to_buy = None
+            if yes_price >= HIGH_CONVICTION_THRESHOLD:
+                trade_to_make = {
+                    'share_type': "YES",
+                    'size': HIGH_CONVICTION_SIZE_USD,
+                    'price': yes_price,
+                    'reason': f"High Conviction: YES price >= {HIGH_CONVICTION_THRESHOLD}"
+                }
 
-            if no_price >= BUY_THRESHOLD:
-                 share_type_to_buy = 'NO'
-                 price_to_buy = no_price
+            
+            
+            elif no_price >= HIGH_CONVICTION_THRESHOLD:
+                trade_to_make = {
+                    'share_type': "NO",
+                    'size': HIGH_CONVICTION_SIZE_USD,
+                    'price': no_price,
+                    'reason': f"High Conviction: NO price >= {HIGH_CONVICTION_THRESHOLD}"
+                }
+            
+            elif yes_price >= MEDIUM_CONVICTION_THRESHOLD:
+                trade_to_make = {
+                    'share_type': "YES",
+                    'size': MEDIUM_CONVICTION_SIZE_USD,
+                    'price': yes_price,
+                    'reason': f"Medium Conviction: YES price >= {MEDIUM_CONVICTION_THRESHOLD}"
+                }
+            
+            elif no_price >= MEDIUM_CONVICTION_THRESHOLD:
+                trade_to_make = {
+                    'share_type': "NO",
+                    'size': MEDIUM_CONVICTION_SIZE_USD,
+                    'price': no_price,
+                    'reason': f"Medium Conviction: NO price >= {MEDIUM_CONVICTION_THRESHOLD}"
+                }
 
-            elif yes_price >= BUY_THRESHOLD:
-                 share_type_to_buy = 'YES'
-                 price_to_buy = yes_price
+            if trade_to_make:
+                share_type_to_buy = trade_to_make['share_type']
+                usdc_to_spend = trade_to_make['size']
+                price_to_buy = trade_to_make['price']
+                reason_for_trade = trade_to_make['reason']
 
-            if share_type_to_buy:
-                logger.info(f"STRATEGY TRIGGERED: Market in endgame and {share_type_to_buy} price is high")
+                logger.info(f"STRATEGY TRIGGERED: {reason_for_trade}. Planning to spend ${usdc_to_spend}.")
 
                 try:
                     TRADE_IN_PROCESS.add(trade_market_address)
@@ -130,23 +165,23 @@ async def check_and_execute_buy_strategy(market_data: dict, client: "CustomWebSo
                             await client.place_order(
                                 market_address=trade_market_address, 
                                 share_type= share_type_to_buy,
-                                size=TRADE_AMOUNT_USD,        
-                                price=market_data['no_price']
+                                size=usdc_to_spend,        
+                                price=price_to_buy
                         )
                         
                     elif market_type == 'amm':
                         buy_successful =  await client.execute_amm_buy(
                                     market_address=trade_market_address,
                                     share_type= share_type_to_buy,
-                                    size=TRADE_AMOUNT_USD,
+                                    size=usdc_to_spend,
                                     price = price_to_buy,
-                                    reason= f"{share_type_to_buy} price >= {BUY_THRESHOLD} at {TIME_WINDOW_MINUTES} mins left"
+                                    reason= reason_for_trade
                                     )
                         
                         if buy_successful:
                                     logger.info(f"Successfully entered {share_type_to_buy} position for {trade_market_address}.. Updating state..")
                                     client.traded_markets.add(trade_market_address)
-                                    OPEN_POSITIONS[trade_market_address] = {'side' : share_type_to_buy, 'entry_price': price_to_buy, 'size': TRADE_AMOUNT_USD}
+                                    OPEN_POSITIONS[trade_market_address] = {'side' : share_type_to_buy, 'entry_price': price_to_buy, 'size': usdc_to_spend}
 
                         else: 
                                     logger.warning(f"Buy trade for {share_type_to_buy} on {trade_market_address} failed.. State not updated.")
