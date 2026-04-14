@@ -8,7 +8,6 @@ An autonomous, event-driven trading bot designed to operate 24/7 on the [Limitle
 
 ---
 
-## Architecture Diagram
 
 ## Architecture Diagram
 
@@ -21,7 +20,9 @@ This flowchart illustrates the bot's architecture, from startup and configuratio
 -   **Fully Autonomous 24/7 Operation:** Designed to be deployed on a server as a `systemd` service for continuous, reliable execution.
   
 -   **Dual Trading Architecture:** Intelligently identifies and interacts with two distinct market types:
+
     -   **CLOB Markets:** Executes trades by submitting signed EIP-712 orders to the exchange's REST API.
+
     -   **AMM Markets:** Executes trades by sending signed transactions directly to the market's smart contract on the Base blockchain.
       
 -   **Sophisticated Strategy Engine:** Implements a time-aware "endgame" strategy with dynamic position sizing based on configurable conviction levels. It only enters trades within a specific time window before market resolution.
@@ -29,17 +30,26 @@ This flowchart illustrates the bot's architecture, from startup and configuratio
 -   **Stateful Position Management:** Tracks open positions (`OPEN_POSITIONS`) to manage exits (e.g., stop-loss) and uses a separate state (`traded_markets`) to prevent duplicate entries within the same hour.
   
 -   **Robust On-Chain Capabilities:**
+
     -   Handles modern EIP-1559 gas fee calculations for reliable transaction inclusion.
+
     -   **Cost-Aware Trading:** Includes a gas price check to abort transactions if estimated network fees exceed a defined USD threshold.
+
     -   **Automatic Approvals:** Intelligently checks and performs on-chain `approve` (for ERC20/USDC) and `setApprovalForAll` (for ERC1155/share tokens) transactions only when necessary.
+
     -   **Concurrency-Safe:** A thread-safe `NonceManager` ensures multiple, near-simultaneous trade signals don't cause "nonce too low" errors.
       
 -   **Resilient Networking & Lifecycle Management:**
+
     -   The hourly market update task uses a "smart timer" and a "verification loop" to gracefully handle the transition between market periods, ensuring it always subscribes to fresh, valid markets.
+
     -   Includes retry mechanisms for network-dependent connections.
       
+
 -   **Detailed Record Keeping:**
+
     -   Maintains a rotating `bot.log` file for operational activity.
+
     -   Keeps a structured `trades.csv` file, logging every entry and exit with detailed metrics for easy performance analysis.
 
 ---
@@ -48,11 +58,14 @@ This flowchart illustrates the bot's architecture, from startup and configuratio
 
 > **Warning:** This bot is tightly coupled to the live data formats provided by the Limitless Exchange's API and WebSocket services. It is not an official product and is not guaranteed to be maintained.
 >
-> **If Limitless changes the structure of their API responses, WebSocket events, or smart contract ABIs, this bot WILL break.**
+> **If Limitless changes the structure of their markets, API responses, WebSocket events, or smart contract ABIs, this bot WILL break.**
 >
 > Key areas of sensitivity include:
+
 > -   The structure of the market data from the `/markets/active` endpoint (e.g., the format of `positionIds`, `tags`, or the `tokens` object).
+
 > -   The names of WebSocket events (e.g., `newPriceData`).
+
 > -   The smart contract ABIs for both AMM and token contracts.
 >
 > Users of this code are responsible for monitoring for such changes and updating the parsing and interaction logic accordingly.
