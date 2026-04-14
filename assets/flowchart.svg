@@ -1,0 +1,225 @@
+<svg width="647pt" height="1305pt" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns:ev="http://www.w3.org/2001/xml-events" style="overflow: hidden; "><g id="viewport-20260414002909788" class="svg-pan-zoom_viewport" transform="matrix(1.4678598642349243,0,0,1.4678598642349243,-353.88525390625,-1174.6781005859375)" style="transform: matrix(1.46786, 0, 0, 1.46786, -353.885, -1174.68);">
+<g id="graph0" class="graph" transform="scale(1 1) rotate(0) translate(4 1301.03)">
+<title>BotArchitecture</title>
+<polygon fill="white" stroke="none" points="-4,4 -4,-1301.03 643,-1301.03 643,4 -4,4"></polygon>
+<text text-anchor="middle" x="319.5" y="-1280.43" font-family="Arial" font-size="14.00">Limitless Trading Bot - Architecture and Workflow</text>
+<g id="clust2" class="cluster">
+<title>cluster_main_loop</title>
+<polygon fill="#e6f7ff" stroke="black" points="370,-8 370,-727.4 631,-727.4 631,-8 370,-8"></polygon>
+<text text-anchor="middle" x="500.5" y="-710.8" font-family="Arial" font-size="14.00">Phase 2: Real-Time Loop</text>
+</g>
+<g id="clust3" class="cluster">
+<title>cluster_hourly_update</title>
+<polygon fill="#e9ecef" stroke="black" points="379,-784.6 379,-1264.23 603,-1264.23 603,-784.6 379,-784.6"></polygon>
+<text text-anchor="middle" x="491" y="-1247.63" font-family="Arial" font-size="14.00">Phase 3: Hourly Update Cycle</text>
+</g>
+<g id="clust1" class="cluster">
+<title>cluster_startup</title>
+<polygon fill="#f5f5f5" stroke="black" points="8,-784.6 8,-984.4 286,-984.4 286,-784.6 8,-784.6"></polygon>
+<text text-anchor="middle" x="147" y="-967.8" font-family="Arial" font-size="14.00">Phase 1: Startup</text>
+</g>
+<!-- run_bot -->
+<g id="node1" class="node">
+<title>run_bot</title>
+<path fill="#e0e8ff" stroke="black" d="M69.51,-951.6C69.51,-951.6 28.49,-951.6 28.49,-951.6 22.49,-951.6 16.49,-945.6 16.49,-939.6 16.49,-939.6 16.49,-927.6 16.49,-927.6 16.49,-921.6 22.49,-915.6 28.49,-915.6 28.49,-915.6 69.51,-915.6 69.51,-915.6 75.51,-915.6 81.51,-921.6 81.51,-927.6 81.51,-927.6 81.51,-939.6 81.51,-939.6 81.51,-945.6 75.51,-951.6 69.51,-951.6"></path>
+<text text-anchor="middle" x="49" y="-929.4" font-family="Arial" font-size="14.00">main.py</text>
+</g>
+<!-- load_config -->
+<g id="node2" class="node">
+<title>load_config</title>
+<path fill="#e0e8ff" stroke="black" d="M83.02,-828.6C83.02,-828.6 34.98,-828.6 34.98,-828.6 28.98,-828.6 22.98,-822.6 22.98,-816.6 22.98,-816.6 22.98,-804.6 22.98,-804.6 22.98,-798.6 28.98,-792.6 34.98,-792.6 34.98,-792.6 83.02,-792.6 83.02,-792.6 89.02,-792.6 95.02,-798.6 95.02,-804.6 95.02,-804.6 95.02,-816.6 95.02,-816.6 95.02,-822.6 89.02,-828.6 83.02,-828.6"></path>
+<text text-anchor="middle" x="59" y="-806.4" font-family="Arial" font-size="14.00">config.py</text>
+</g>
+<!-- run_bot&#45;&gt;load_config -->
+<g id="edge1" class="edge">
+<title>run_bot-&gt;load_config</title>
+<path fill="none" stroke="black" stroke-width="2" d="M62,-915.19C62,-915.19 62,-840.25 62,-840.25"></path>
+<polygon fill="black" stroke="black" stroke-width="2" points="65.5,-841.77 62,-831.77 58.5,-841.77 65.5,-841.77"></polygon>
+</g>
+<!-- create_client -->
+<g id="node4" class="node">
+<title>create_client</title>
+<path fill="#e0e8ff" stroke="black" d="M253.13,-828.6C253.13,-828.6 170.87,-828.6 170.87,-828.6 164.87,-828.6 158.87,-822.6 158.87,-816.6 158.87,-816.6 158.87,-804.6 158.87,-804.6 158.87,-798.6 164.87,-792.6 170.87,-792.6 170.87,-792.6 253.13,-792.6 253.13,-792.6 259.13,-792.6 265.13,-798.6 265.13,-804.6 265.13,-804.6 265.13,-816.6 265.13,-816.6 265.13,-822.6 259.13,-828.6 253.13,-828.6"></path>
+<text text-anchor="middle" x="212" y="-806.4" font-family="Arial" font-size="14.00">Initialize Client</text>
+</g>
+<!-- run_bot&#45;&gt;create_client -->
+<g id="edge6" class="edge">
+<title>run_bot-&gt;create_client</title>
+<path fill="none" stroke="black" d="M81.63,-933C99.27,-933 117.47,-933 117.47,-933 117.47,-933 117.47,-810 117.47,-810 117.47,-810 146.87,-810 146.87,-810"></path>
+<polygon fill="black" stroke="black" points="146.87,-813.5 156.87,-810 146.87,-806.5 146.87,-813.5"></polygon>
+</g>
+<!-- load_config&#45;&gt;run_bot -->
+<g id="edge5" class="edge">
+<title>load_config-&gt;run_bot</title>
+<path fill="none" stroke="black" d="M42.49,-829.01C42.49,-829.01 42.49,-903.95 42.49,-903.95"></path>
+<polygon fill="black" stroke="black" points="38.99,-903.95 42.49,-913.95 45.99,-903.95 38.99,-903.95"></polygon>
+</g>
+<!-- get_active_markets -->
+<g id="node3" class="node">
+<title>get_active_markets</title>
+<path fill="#e0e8ff" stroke="black" d="M543.02,-951.6C543.02,-951.6 438.98,-951.6 438.98,-951.6 432.98,-951.6 426.98,-945.6 426.98,-939.6 426.98,-939.6 426.98,-927.6 426.98,-927.6 426.98,-921.6 432.98,-915.6 438.98,-915.6 438.98,-915.6 543.02,-915.6 543.02,-915.6 549.02,-915.6 555.02,-921.6 555.02,-927.6 555.02,-927.6 555.02,-939.6 555.02,-939.6 555.02,-945.6 549.02,-951.6 543.02,-951.6"></path>
+<text text-anchor="middle" x="491" y="-929.4" font-family="Arial" font-size="14.00">market_fetcher.py</text>
+</g>
+<!-- load_config&#45;&gt;get_active_markets -->
+<g id="edge2" class="edge">
+<title>load_config-&gt;get_active_markets</title>
+<path fill="none" stroke="black" d="M90.51,-828.85C90.51,-851.17 90.51,-886 90.51,-886 90.51,-886 491,-886 491,-886 491,-886 491,-903.82 491,-903.82"></path>
+<polygon fill="black" stroke="black" points="487.5,-903.82 491,-913.82 494.5,-903.82 487.5,-903.82"></polygon>
+</g>
+<!-- get_active_markets&#45;&gt;load_config -->
+<g id="edge4" class="edge">
+<title>get_active_markets-&gt;load_config</title>
+<path fill="none" stroke="black" d="M458.99,-915.45C458.99,-892.8 458.99,-857 458.99,-857 458.99,-857 86.01,-857 86.01,-857 86.01,-857 86.01,-840.45 86.01,-840.45"></path>
+<polygon fill="black" stroke="black" points="89.51,-840.45 86.01,-830.45 82.51,-840.45 89.51,-840.45"></polygon>
+</g>
+<!-- LimitlessAPI -->
+<g id="node6" class="node">
+<title>LimitlessAPI</title>
+<path fill="#d3d3d3" stroke="black" d="M278.07,-948.33C278.07,-950.13 247.11,-951.6 209,-951.6 170.89,-951.6 139.93,-950.13 139.93,-948.33 139.93,-948.33 139.93,-918.87 139.93,-918.87 139.93,-917.07 170.89,-915.6 209,-915.6 247.11,-915.6 278.07,-917.07 278.07,-918.87 278.07,-918.87 278.07,-948.33 278.07,-948.33"></path>
+<path fill="none" stroke="black" d="M278.07,-948.33C278.07,-946.52 247.11,-945.05 209,-945.05 170.89,-945.05 139.93,-946.52 139.93,-948.33"></path>
+<text text-anchor="middle" x="209" y="-929.4" font-family="Arial" font-size="14.00">Limitless REST API</text>
+</g>
+<!-- get_active_markets&#45;&gt;LimitlessAPI -->
+<g id="edge3" class="edge">
+<title>get_active_markets-&gt;LimitlessAPI</title>
+<path fill="none" stroke="black" d="M426.66,-933C426.66,-933 290.01,-933 290.01,-933"></path>
+<polygon fill="black" stroke="black" points="290.01,-929.5 280.01,-933 290.01,-936.5 290.01,-929.5"></polygon>
+</g>
+<!-- update_subscriptions -->
+<g id="node14" class="node">
+<title>update_subscriptions</title>
+<path fill="#e0e8ff" stroke="black" d="M583.1,-828.6C583.1,-828.6 398.9,-828.6 398.9,-828.6 392.9,-828.6 386.9,-822.6 386.9,-816.6 386.9,-816.6 386.9,-804.6 386.9,-804.6 386.9,-798.6 392.9,-792.6 398.9,-792.6 398.9,-792.6 583.1,-792.6 583.1,-792.6 589.1,-792.6 595.1,-798.6 595.1,-804.6 595.1,-804.6 595.1,-816.6 595.1,-816.6 595.1,-822.6 589.1,-828.6 583.1,-828.6"></path>
+<text text-anchor="middle" x="491" y="-806.4" font-family="Arial" font-size="14.00">update_market_subscriptions()</text>
+</g>
+<!-- get_active_markets&#45;&gt;update_subscriptions -->
+<g id="edge17" class="edge">
+<title>get_active_markets-&gt;update_subscriptions</title>
+<path fill="none" stroke="black" d="M523.01,-915.19C523.01,-915.19 523.01,-840.25 523.01,-840.25"></path>
+<polygon fill="black" stroke="black" points="526.51,-840.25 523.01,-830.25 519.51,-840.25 526.51,-840.25"></polygon>
+</g>
+<!-- launch_tasks -->
+<g id="node5" class="node">
+<title>launch_tasks</title>
+<path fill="#e0e8ff" stroke="black" d="M548.58,-1231.43C548.58,-1231.43 469.42,-1231.43 469.42,-1231.43 463.42,-1231.43 457.42,-1225.43 457.42,-1219.43 457.42,-1219.43 457.42,-1207.43 457.42,-1207.43 457.42,-1201.43 463.42,-1195.43 469.42,-1195.43 469.42,-1195.43 548.58,-1195.43 548.58,-1195.43 554.58,-1195.43 560.58,-1201.43 560.58,-1207.43 560.58,-1207.43 560.58,-1219.43 560.58,-1219.43 560.58,-1225.43 554.58,-1231.43 548.58,-1231.43"></path>
+<text text-anchor="middle" x="509" y="-1209.23" font-family="Arial" font-size="14.00">Launch Tasks</text>
+</g>
+<!-- create_client&#45;&gt;launch_tasks -->
+<g id="edge7" class="edge">
+<title>create_client-&gt;launch_tasks</title>
+<path fill="none" stroke="black" d="M265.3,-810C297.32,-810 331.92,-810 331.92,-810 331.92,-810 331.92,-1213 331.92,-1213 331.92,-1213 445.79,-1213 445.79,-1213"></path>
+<polygon fill="black" stroke="black" points="445.79,-1216.5 455.79,-1213 445.79,-1209.5 445.79,-1216.5"></polygon>
+</g>
+<!-- smart_sleep -->
+<g id="node13" class="node">
+<title>smart_sleep</title>
+<ellipse fill="#e0e8ff" stroke="black" cx="483" cy="-1079.02" rx="80.09" ry="29.42"></ellipse>
+<text text-anchor="middle" x="483" y="-1083.22" font-family="Arial" font-size="14.00">Smart Sleep</text>
+<text text-anchor="middle" x="483" y="-1066.42" font-family="Arial" font-size="14.00">(until next hour)</text>
+</g>
+<!-- launch_tasks&#45;&gt;smart_sleep -->
+<g id="edge15" class="edge">
+<title>launch_tasks-&gt;smart_sleep</title>
+<path fill="none" stroke="black" stroke-dasharray="5,2" d="M509,-1195.02C509,-1195.02 509,-1118.78 509,-1118.78"></path>
+<polygon fill="black" stroke="black" points="512.5,-1118.78 509,-1108.78 505.5,-1118.78 512.5,-1118.78"></polygon>
+</g>
+<!-- WebSocketServer -->
+<g id="node7" class="node">
+<title>WebSocketServer</title>
+<path fill="#d3d3d3" stroke="black" d="M563.97,-691.33C563.97,-693.13 531.26,-694.6 491,-694.6 450.74,-694.6 418.03,-693.13 418.03,-691.33 418.03,-691.33 418.03,-661.87 418.03,-661.87 418.03,-660.07 450.74,-658.6 491,-658.6 531.26,-658.6 563.97,-660.07 563.97,-661.87 563.97,-661.87 563.97,-691.33 563.97,-691.33"></path>
+<path fill="none" stroke="black" d="M563.97,-691.33C563.97,-689.52 531.26,-688.05 491,-688.05 450.74,-688.05 418.03,-689.52 418.03,-691.33"></path>
+<text text-anchor="middle" x="491" y="-672.4" font-family="Arial" font-size="14.00">Limitless WebSocket</text>
+</g>
+<!-- newPriceData_handler -->
+<g id="node8" class="node">
+<title>newPriceData_handler</title>
+<path fill="#e0e8ff" stroke="black" d="M564.38,-571.6C564.38,-571.6 417.62,-571.6 417.62,-571.6 411.62,-571.6 405.62,-565.6 405.62,-559.6 405.62,-559.6 405.62,-547.6 405.62,-547.6 405.62,-541.6 411.62,-535.6 417.62,-535.6 417.62,-535.6 564.38,-535.6 564.38,-535.6 570.38,-535.6 576.38,-541.6 576.38,-547.6 576.38,-547.6 576.38,-559.6 576.38,-559.6 576.38,-565.6 570.38,-571.6 564.38,-571.6"></path>
+<text text-anchor="middle" x="491" y="-549.4" font-family="Arial" font-size="14.00">On 'newPriceData' Event</text>
+</g>
+<!-- WebSocketServer&#45;&gt;newPriceData_handler -->
+<g id="edge8" class="edge">
+<title>WebSocketServer-&gt;newPriceData_handler</title>
+<path fill="none" stroke="#28a745" stroke-width="2" d="M491,-658.19C491,-658.19 491,-583.25 491,-583.25"></path>
+<polygon fill="#28a745" stroke="#28a745" stroke-width="2" points="494.5,-584.77 491,-574.77 487.5,-584.77 494.5,-584.77"></polygon>
+</g>
+<!-- strategy_py -->
+<g id="node9" class="node">
+<title>strategy_py</title>
+<path fill="#e0e8ff" stroke="black" d="M458.24,-448.6C458.24,-448.6 397.76,-448.6 397.76,-448.6 391.76,-448.6 385.76,-442.6 385.76,-436.6 385.76,-436.6 385.76,-424.6 385.76,-424.6 385.76,-418.6 391.76,-412.6 397.76,-412.6 397.76,-412.6 458.24,-412.6 458.24,-412.6 464.24,-412.6 470.24,-418.6 470.24,-424.6 470.24,-424.6 470.24,-436.6 470.24,-436.6 470.24,-442.6 464.24,-448.6 458.24,-448.6"></path>
+<text text-anchor="middle" x="428" y="-426.4" font-family="Arial" font-size="14.00">strategy.py</text>
+</g>
+<!-- newPriceData_handler&#45;&gt;strategy_py -->
+<g id="edge9" class="edge">
+<title>newPriceData_handler-&gt;strategy_py</title>
+<path fill="none" stroke="black" d="M437.93,-535.19C437.93,-535.19 437.93,-460.25 437.93,-460.25"></path>
+<polygon fill="black" stroke="black" points="441.43,-460.25 437.93,-450.25 434.43,-460.25 441.43,-460.25"></polygon>
+</g>
+<!-- trade_decision -->
+<g id="node10" class="node">
+<title>trade_decision</title>
+<path fill="#e0e8ff" stroke="black" d="M488.52,-322.09C488.52,-322.09 452.6,-311.11 452.6,-311.11 446.86,-309.35 446.86,-305.85 452.6,-304.09 452.6,-304.09 488.52,-293.11 488.52,-293.11 494.26,-291.35 505.74,-291.35 511.48,-293.11 511.48,-293.11 547.4,-304.09 547.4,-304.09 553.14,-305.85 553.14,-309.35 547.4,-311.11 547.4,-311.11 511.48,-322.09 511.48,-322.09 505.74,-323.85 494.26,-323.85 488.52,-322.09"></path>
+<text text-anchor="middle" x="500" y="-303.4" font-family="Arial" font-size="14.00">Trade?</text>
+</g>
+<!-- strategy_py&#45;&gt;trade_decision -->
+<g id="edge10" class="edge">
+<title>strategy_py-&gt;trade_decision</title>
+<path fill="none" stroke="black" d="M455.68,-412.19C455.68,-412.19 455.68,-323.86 455.68,-323.86"></path>
+<polygon fill="black" stroke="black" points="459.18,-323.86 455.68,-313.86 452.18,-323.86 459.18,-323.86"></polygon>
+</g>
+<!-- trade_decision&#45;&gt;newPriceData_handler -->
+<g id="edge11" class="edge">
+<title>trade_decision-&gt;newPriceData_handler</title>
+<path fill="none" stroke="#dc3545" d="M514.56,-321.53C514.56,-321.53 514.56,-523.78 514.56,-523.78"></path>
+<polygon fill="#dc3545" stroke="#dc3545" points="511.06,-523.78 514.56,-533.78 518.06,-523.78 511.06,-523.78"></polygon>
+<text text-anchor="middle" x="592.39" y="-427.6" font-family="Arial" font-size="10.00">No</text>
+</g>
+<!-- place_order -->
+<g id="node11" class="node">
+<title>place_order</title>
+<path fill="#e0e8ff" stroke="black" d="M546.17,-191.6C546.17,-191.6 453.83,-191.6 453.83,-191.6 447.83,-191.6 441.83,-185.6 441.83,-179.6 441.83,-179.6 441.83,-162 441.83,-162 441.83,-156 447.83,-150 453.83,-150 453.83,-150 546.17,-150 546.17,-150 552.17,-150 558.17,-156 558.17,-162 558.17,-162 558.17,-179.6 558.17,-179.6 558.17,-185.6 552.17,-191.6 546.17,-191.6"></path>
+<text text-anchor="middle" x="500" y="-175" font-family="Arial" font-size="14.00">Execute Trade</text>
+<text text-anchor="middle" x="500" y="-158.2" font-family="Arial" font-size="14.00">(CLOB or AMM)</text>
+</g>
+<!-- trade_decision&#45;&gt;place_order -->
+<g id="edge12" class="edge">
+<title>trade_decision-&gt;place_order</title>
+<path fill="none" stroke="#28a745" d="M500,-289.15C500,-289.15 500,-203.61 500,-203.61"></path>
+<polygon fill="#28a745" stroke="#28a745" points="503.5,-203.61 500,-193.61 496.5,-203.61 503.5,-203.61"></polygon>
+<text text-anchor="middle" x="508.62" y="-237.6" font-family="Arial" font-size="10.00">Yes</text>
+</g>
+<!-- Blockchain -->
+<g id="node12" class="node">
+<title>Blockchain</title>
+<path fill="#d3d3d3" stroke="black" d="M581.14,-48.73C581.14,-50.53 544.77,-52 500,-52 455.23,-52 418.86,-50.53 418.86,-48.73 418.86,-48.73 418.86,-19.27 418.86,-19.27 418.86,-17.47 455.23,-16 500,-16 544.77,-16 581.14,-17.47 581.14,-19.27 581.14,-19.27 581.14,-48.73 581.14,-48.73"></path>
+<path fill="none" stroke="black" d="M581.14,-48.73C581.14,-46.92 544.77,-45.45 500,-45.45 455.23,-45.45 418.86,-46.92 418.86,-48.73"></path>
+<text text-anchor="middle" x="500" y="-29.8" font-family="Arial" font-size="14.00">Base Blockchain (RPC)</text>
+</g>
+<!-- place_order&#45;&gt;Blockchain -->
+<g id="edge13" class="edge">
+<title>place_order-&gt;Blockchain</title>
+<path fill="none" stroke="black" d="M480.61,-149.72C480.61,-149.72 480.61,-63.77 480.61,-63.77"></path>
+<polygon fill="black" stroke="black" points="484.11,-63.77 480.61,-53.77 477.11,-63.77 484.11,-63.77"></polygon>
+<text text-anchor="middle" x="474.08" y="-98" font-family="Arial" font-size="10.00">Sends Signed Tx</text>
+</g>
+<!-- Blockchain&#45;&gt;place_order -->
+<g id="edge14" class="edge">
+<title>Blockchain-&gt;place_order</title>
+<path fill="none" stroke="black" d="M519.39,-52.45C519.39,-52.45 519.39,-137.99 519.39,-137.99"></path>
+<polygon fill="black" stroke="black" points="515.89,-137.99 519.39,-147.99 522.89,-137.99 515.89,-137.99"></polygon>
+<text text-anchor="middle" x="598.9" y="-98" font-family="Arial" font-size="10.00">Tx Receipt</text>
+</g>
+<!-- smart_sleep&#45;&gt;get_active_markets -->
+<g id="edge16" class="edge">
+<title>smart_sleep-&gt;get_active_markets</title>
+<path fill="none" stroke="black" d="M491,-1049.59C491,-1049.59 491,-963.46 491,-963.46"></path>
+<polygon fill="black" stroke="black" points="494.5,-963.46 491,-953.46 487.5,-963.46 494.5,-963.46"></polygon>
+<text text-anchor="middle" x="519.78" y="-997.6" font-family="Arial" font-size="10.00">Timer Finishes</text>
+</g>
+<!-- update_subscriptions&#45;&gt;WebSocketServer -->
+<g id="edge18" class="edge">
+<title>update_subscriptions-&gt;WebSocketServer</title>
+<path fill="none" stroke="black" d="M491,-792.25C491,-792.25 491,-706.24 491,-706.24"></path>
+<polygon fill="black" stroke="black" points="494.5,-706.24 491,-696.24 487.5,-706.24 494.5,-706.24"></polygon>
+<text text-anchor="middle" x="545.75" y="-740.6" font-family="Arial" font-size="10.00">Disconnect &amp; Reconnect</text>
+</g>
+</g>
+</g></svg>
